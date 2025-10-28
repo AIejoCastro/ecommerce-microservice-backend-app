@@ -1,0 +1,554 @@
+pipeline {
+    agent any
+    
+    parameters {
+        choice(
+            name: 'RELEASE_TYPE',
+            choices: ['patch', 'minor', 'major'],
+            description: 'Tipo de release (patch: bugfixes, minor: features, major: breaking changes)'
+        )
+        string(
+            name: 'RELEASE_NOTES',
+            defaultValue: '',
+            description: 'Notas adicionales para el release (opcional)'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Saltar tests (solo para emergencias)'
+        )
+    }
+    
+    environment {
+        DOCKER_REGISTRY = 'selimhorri'
+        NAMESPACE = 'ecommerce-prod'
+        SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
+        MAVEN_OPTS = '-Xmx1024m'
+        
+        // Versionado semántico
+        CURRENT_VERSION = sh(
+            script: "git describe --tags --abbrev=0 2>/dev/null || echo 'v0.0.0'",
+            returnStdout: true
+        ).trim()
+    }
+    
+    stages {
+        stage('🔐 Pre-flight Checks') {
+            steps {
+                script {
+                    echo "🔐 Running pre-flight checks..."
+                    
+                    // Verificar que estamos en master/main
+                    def branch = sh(
+                        script: 'git branch --show-current',
+                        returnStdout: true
+                    ).trim()
+                    
+                    if (branch != 'master' && branch != 'main') {
+                        error("❌ Production deploys only allowed from master/main branch")
+                    }
+                    
+                    // Verificar que no hay cambios sin commit
+                    sh '''
+                        if [ -n "$(git status --porcelain)" ]; then
+                            echo "❌ Hay cambios sin commit"
+                            exit 1
+                        fi
+                    '''
+                    
+                    echo "✅ Pre-flight checks passed"
+                }
+            }
+        }
+        
+        stage('📝 Calculate Version') {
+            steps {
+                script {
+                    echo "📝 Calculating new version..."
+                    
+                    // Limpiar la versión actual
+                    def currentVer = env.CURRENT_VERSION.replaceAll('v', '')
+                    def (major, minor, patch) = currentVer.tokenize('.').collect { it.toInteger() }
+                    
+                    // Incrementar según tipo de release
+                    switch(params.RELEASE_TYPE) {
+                        case 'major':
+                            major++
+                            minor = 0
+                            patch = 0
+                            break
+                        case 'minor':
+                            minor++
+                            patch = 0
+                            break
+                        case 'patch':
+                            patch++
+                            break
+                    }
+                    
+                    env.NEW_VERSION = "v${major}.${minor}.${patch}"
+                    env.VERSION_NUMBER = "${major}.${minor}.${patch}"
+                    
+                    echo "📌 Current Version: ${env.CURRENT_VERSION}"
+                    echo "🆕 New Version: ${env.NEW_VERSION}"
+                }
+            }
+        }
+        
+        stage('🔍 Checkout') {
+            steps {
+                script {
+                    echo "📦 Checking out production code..."
+                    checkout scm
+                    
+                    sh """
+                        git log -5 --pretty=format:"%h - %an: %s" > git-log.txt
+                        echo "📝 Recent commits:"
+                        cat git-log.txt
+                    """
+                }
+            }
+        }
+        
+        stage('🏗️ Build Services') {
+            parallel {
+                stage('Build API Gateway') {
+                    steps {
+                        script {
+                            buildService('api-gateway')
+                        }
+                    }
+                }
+                stage('Build User Service') {
+                    steps {
+                        script {
+                            buildService('user-service')
+                        }
+                    }
+                }
+                stage('Build Product Service') {
+                    steps {
+                        script {
+                            buildService('product-service')
+                        }
+                    }
+                }
+                stage('Build Order Service') {
+                    steps {
+                        script {
+                            buildService('order-service')
+                        }
+                    }
+                }
+                stage('Build Payment Service') {
+                    steps {
+                        script {
+                            buildService('payment-service')
+                        }
+                    }
+                }
+                stage('Build Shipping Service') {
+                    steps {
+                        script {
+                            buildService('shipping-service')
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('🧪 Unit Tests') {
+            when {
+                expression { !params.SKIP_TESTS }
+            }
+            steps {
+                script {
+                    echo "🧪 Running Unit Tests..."
+                    def services = env.SERVICES.split(',')
+                    services.each { service ->
+                        dir(service) {
+                            sh 'mvn test'
+                        }
+                    }
+                    
+                    // Publicar resultados
+                    junit '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+        
+        stage('🔍 Code Quality Analysis') {
+            when {
+                expression { !params.SKIP_TESTS }
+            }
+            steps {
+                script {
+                    echo "🔍 Running SonarQube analysis..."
+                    // Si tienes SonarQube configurado
+                    sh '''
+                        if command -v sonar-scanner &> /dev/null; then
+                            mvn sonar:sonar \
+                                -Dsonar.projectKey=ecommerce-microservices \
+                                -Dsonar.host.url=$SONAR_HOST_URL \
+                                -Dsonar.login=$SONAR_TOKEN || true
+                        fi
+                    '''
+                }
+            }
+        }
+        
+        stage('🐳 Build Docker Images') {
+            steps {
+                script {
+                    echo "🐳 Building Docker images for PRODUCTION..."
+                    def services = env.SERVICES.split(',')
+                    services.each { service ->
+                        sh """
+                            docker build \
+                                --build-arg SERVICE_NAME=${service} \
+                                --label version=${env.NEW_VERSION} \
+                                --label build-date=\$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+                                --label vcs-ref=\$(git rev-parse HEAD) \
+                                -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:${env.VERSION_NUMBER} \
+                                -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:latest \
+                                -f docker/Dockerfile-springboot \
+                                .
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('🔒 Security & Vulnerability Scan') {
+            steps {
+                script {
+                    echo "🔒 Running comprehensive security scans..."
+                    def services = env.SERVICES.split(',')
+                    services.each { service ->
+                        sh """
+                            # Trivy vulnerability scan
+                            if command -v trivy &> /dev/null; then
+                                trivy image \
+                                    --severity CRITICAL,HIGH \
+                                    --exit-code 0 \
+                                    ${DOCKER_REGISTRY}/${service}-ecommerce-boot:${env.VERSION_NUMBER}
+                            fi
+                            
+                            # Dependency check
+                            mvn dependency-check:check -f ${service}/pom.xml || true
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('📤 Push to Registry') {
+            steps {
+                script {
+                    echo "📤 Pushing production images..."
+                    withDockerRegistry([credentialsId: 'dockerhub-credentials', url: '']) {
+                        def services = env.SERVICES.split(',')
+                        services.each { service ->
+                            sh """
+                                docker push ${DOCKER_REGISTRY}/${service}-ecommerce-boot:${env.VERSION_NUMBER}
+                                docker push ${DOCKER_REGISTRY}/${service}-ecommerce-boot:latest
+                            """
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('🎯 System Tests in Stage') {
+            when {
+                expression { !params.SKIP_TESTS }
+            }
+            steps {
+                script {
+                    echo "🎯 Running system tests in staging environment..."
+                    
+                    // Desplegar temporalmente en stage para tests finales
+                    sh """
+                        # Desplegar versión a stage
+                        kubectl set image deployment/api-gateway \
+                            api-gateway=${DOCKER_REGISTRY}/api-gateway-ecommerce-boot:${env.VERSION_NUMBER} \
+                            -n ecommerce-stage
+                        
+                        kubectl rollout status deployment/api-gateway -n ecommerce-stage --timeout=5m
+                    """
+                    
+                    // Ejecutar suite completa de tests
+                    dir('tests/e2e') {
+                        sh '''
+                            export API_GATEWAY_URL=$(kubectl get svc api-gateway -n ecommerce-stage -o jsonpath='{.spec.clusterIP}'):8080
+                            mvn clean test
+                        '''
+                    }
+                    
+                    junit 'tests/e2e/target/surefire-reports/*.xml'
+                }
+            }
+        }
+        
+        stage('⏸️ Approval Gate') {
+            steps {
+                script {
+                    echo "⏸️ Waiting for manual approval..."
+                    
+                    def deploymentInfo = """
+                        🚀 PRODUCTION DEPLOYMENT APPROVAL
+                        
+                        Version: ${env.NEW_VERSION}
+                        Release Type: ${params.RELEASE_TYPE}
+                        Services: ${env.SERVICES}
+                        Build: #${BUILD_NUMBER}
+                        
+                        Changes:
+                        ${readFile('git-log.txt')}
+                        
+                        ⚠️ This will deploy to PRODUCTION environment
+                    """
+                    
+                    timeout(time: 30, unit: 'MINUTES') {
+                        input message: deploymentInfo, ok: 'Deploy to Production'
+                    }
+                }
+            }
+        }
+        
+        stage('☸️ Deploy to Production') {
+            steps {
+                script {
+                    echo "☸️ Deploying to PRODUCTION Kubernetes..."
+                    
+                    // Crear namespace
+                    sh "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
+                    
+                    // Backup de configuración actual
+                    sh """
+                        kubectl get all -n ${NAMESPACE} -o yaml > backup-${BUILD_NUMBER}.yaml
+                    """
+                    
+                    // Aplicar ConfigMaps
+                    sh "kubectl apply -f kubernetes/prod/configmap.yaml"
+                    
+                    // Desplegar servicios con rolling update
+                    def services = env.SERVICES.split(',')
+                    services.each { service ->
+                        sh """
+                            echo "🚀 Deploying ${service}..."
+                            
+                            # Rolling update
+                            kubectl set image deployment/${service} \
+                                ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${env.VERSION_NUMBER} \
+                                -n ${NAMESPACE} \
+                                --record || \
+                            kubectl apply -f kubernetes/prod/${service}-deployment.yaml
+                            
+                            # Esperar rollout exitoso
+                            kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=10m
+                            
+                            # Verificar pods
+                            kubectl get pods -n ${NAMESPACE} -l app=${service}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('✅ Post-Deployment Validation') {
+            steps {
+                script {
+                    echo "✅ Running post-deployment validation..."
+                    
+                    sleep(time: 30, unit: 'SECONDS') // Esperar estabilización
+                    
+                    sh '''
+                        # Verificar salud de todos los servicios
+                        SERVICES_ARRAY=(${SERVICES//,/ })
+                        
+                        for service in "${SERVICES_ARRAY[@]}"; do
+                            echo "🔍 Validating $service..."
+                            
+                            # Health check
+                            SVC_IP=$(kubectl get svc $service -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                            
+                            case $service in
+                                api-gateway) PORT=8080 ;;
+                                user-service) PORT=8700 ;;
+                                product-service) PORT=8500 ;;
+                                order-service) PORT=8300 ;;
+                                payment-service) PORT=8400 ;;
+                                shipping-service) PORT=8600 ;;
+                            esac
+                            
+                            RETRIES=5
+                            while [ $RETRIES -gt 0 ]; do
+                                if curl -f http://${SVC_IP}:${PORT}/actuator/health; then
+                                    echo "✅ $service is healthy"
+                                    break
+                                fi
+                                RETRIES=$((RETRIES-1))
+                                sleep 10
+                            done
+                            
+                            if [ $RETRIES -eq 0 ]; then
+                                echo "❌ $service health check failed"
+                                exit 1
+                            fi
+                        done
+                    '''
+                }
+            }
+        }
+        
+        stage('📋 Generate Release Notes') {
+            steps {
+                script {
+                    echo "📋 Generating Release Notes..."
+                    
+                    def releaseNotes = generateReleaseNotes(
+                        env.CURRENT_VERSION,
+                        env.NEW_VERSION,
+                        params.RELEASE_NOTES
+                    )
+                    
+                    // Guardar release notes
+                    writeFile file: "RELEASE-${env.NEW_VERSION}.md", text: releaseNotes
+                    
+                    // Mostrar en consola
+                    echo releaseNotes
+                    
+                    // Archivar
+                    archiveArtifacts artifacts: "RELEASE-${env.NEW_VERSION}.md"
+                }
+            }
+        }
+        
+        stage('🏷️ Git Tag & Push') {
+            steps {
+                script {
+                    echo "🏷️ Creating Git tag..."
+                    
+                    withCredentials([usernamePassword(
+                        credentialsId: 'git-credentials',
+                        usernameVariable: 'GIT_USER',
+                        passwordVariable: 'GIT_PASS'
+                    )]) {
+                        sh """
+                            git config user.name "Jenkins CI"
+                            git config user.email "jenkins@example.com"
+                            
+                            # Crear tag
+                            git tag -a ${env.NEW_VERSION} -m "Release ${env.NEW_VERSION}"
+                            
+                            # Push tag
+                            git push https://${GIT_USER}:${GIT_PASS}@github.com/AIejoCastro/ecommerce-microservice-backend-app.git ${env.NEW_VERSION}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('📢 Notify Stakeholders') {
+            steps {
+                script {
+                    echo "📢 Notifying stakeholders..."
+                    
+                    def releaseInfo = readFile("RELEASE-${env.NEW_VERSION}.md")
+                    
+                    // Slack notification
+                    slackSend(
+                        color: 'good',
+                        message: """
+                            🎉 *PRODUCTION DEPLOYMENT SUCCESSFUL*
+                            
+                            Version: `${env.NEW_VERSION}`
+                            Build: #${BUILD_NUMBER}
+                            Type: ${params.RELEASE_TYPE}
+                            
+                            Release Notes: ${BUILD_URL}artifact/RELEASE-${env.NEW_VERSION}.md
+                        """
+                    )
+                    
+                    // Email notification
+                    emailext(
+                        subject: "✅ Production Deploy: ${env.NEW_VERSION}",
+                        body: releaseInfo,
+                        to: 'team@example.com',
+                        attachLog: true
+                    )
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            script {
+                echo "🎉 PRODUCTION DEPLOYMENT COMPLETED SUCCESSFULLY!"
+                echo "Version ${env.NEW_VERSION} is now live in production"
+            }
+        }
+        failure {
+            script {
+                echo "❌ PRODUCTION DEPLOYMENT FAILED!"
+                
+                // Rollback automático
+                echo "🔄 Initiating automatic rollback..."
+                sh """
+                    kubectl rollout undo deployment/api-gateway -n ${NAMESPACE}
+                    kubectl rollout undo deployment/user-service -n ${NAMESPACE}
+                    kubectl rollout undo deployment/product-service -n ${NAMESPACE}
+                    kubectl rollout undo deployment/order-service -n ${NAMESPACE}
+                    kubectl rollout undo deployment/payment-service -n ${NAMESPACE}
+                    kubectl rollout undo deployment/shipping-service -n ${NAMESPACE}
+                """
+                
+                slackSend(
+                    color: 'danger',
+                    message: """
+                        ❌ *PRODUCTION DEPLOYMENT FAILED - ROLLBACK INITIATED*
+                        Build: #${BUILD_NUMBER}
+                        Check: ${BUILD_URL}console
+                    """
+                )
+            }
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
+
+// Helper Functions
+def buildService(serviceName) {
+    echo "🏗️ Building ${serviceName}..."
+    dir(serviceName) {
+        sh 'mvn clean package -DskipTests'
+    }
+}
+
+def generateReleaseNotes(currentVersion, newVersion, additionalNotes) {
+    def gitLog = sh(
+        script: "git log ${currentVersion}..HEAD --pretty=format:'- %s (%an)' --no-merges",
+        returnStdout: true
+    ).trim()
+    
+    def commitCount = sh(
+        script: "git rev-list ${currentVersion}..HEAD --count",
+        returnStdout: true
+    ).trim()
+    
+    def contributors = sh(
+        script: "git log ${currentVersion}..HEAD --format='%an' | sort -u",
+        returnStdout: true
+    ).trim()
+    
+    return """
+# Release Notes - ${newVersion}
+
+**Release Date:** ${new Date().format('yyyy-MM-dd HH:mm:ss')}  
+**Previous Version:** ${currentVersion}  
+**Build Number:** #${BUILD_NUMBER}  
+**Total Commits:** ${commitCount}

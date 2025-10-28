@@ -1,0 +1,37 @@
+# kubernetes/dev/product-service-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: ecommerce-dev
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: product-service
+  template:
+    metadata:
+      labels:
+        app: product-service
+    spec:
+      containers:
+      - name: product-service
+        image: selimhorri/product-service-ecommerce-boot:latest
+        ports:
+        - containerPort: 8500
+        envFrom:
+        - configMapRef:
+            name: microservices-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: ecommerce-dev
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8500
+    targetPort: 8500
+  selector:
+    app: product-service

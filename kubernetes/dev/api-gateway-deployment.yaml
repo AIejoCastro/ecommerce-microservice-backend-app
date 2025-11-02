@@ -1,62 +1,62 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-service
+  name: api-gateway
   namespace: ecommerce-dev
   labels:
-    app: product-service
+    app: api-gateway
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: product-service
+      app: api-gateway
   template:
     metadata:
       labels:
-        app: product-service
+        app: api-gateway
     spec:
       containers:
-        - name: product-service
-          image: selimhorri/product-service-ecommerce-boot:dev-latest
+        - name: api-gateway
+          image: selimhorri/api-gateway-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8500
+            - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: microservices-config
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
+              port: 8080
             initialDelaySeconds: 15
             periodSeconds: 15
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
+              port: 8080
             initialDelaySeconds: 30
             periodSeconds: 30
           resources:
             requests:
-              cpu: 100m
+              cpu: 150m
               memory: 256Mi
             limits:
-              cpu: 250m
+              cpu: 300m
               memory: 512Mi
       restartPolicy: Always
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-service
+  name: api-gateway
   namespace: ecommerce-dev
   labels:
-    app: product-service
+    app: api-gateway
 spec:
   type: ClusterIP
   selector:
-    app: product-service
+    app: api-gateway
   ports:
     - name: http
-      port: 8500
-      targetPort: 8500
+      port: 8080
+      targetPort: 8080

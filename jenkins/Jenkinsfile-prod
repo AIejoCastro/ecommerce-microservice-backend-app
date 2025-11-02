@@ -24,6 +24,7 @@ pipeline {
         NAMESPACE = 'ecommerce-prod'
         SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         MAVEN_OPTS = '-Xmx1024m'
+        APP_VERSION = '0.1.0'
         
         // Versionado semántico
         CURRENT_VERSION = sh(
@@ -205,13 +206,13 @@ pipeline {
                     services.each { service ->
                         sh """
                             docker build \
-                                --build-arg SERVICE_NAME=${service} \
+                                --build-arg PROJECT_VERSION=${APP_VERSION} \
                                 --label version=${env.NEW_VERSION} \
                                 --label build-date=\$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
                                 --label vcs-ref=\$(git rev-parse HEAD) \
                                 -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:${env.VERSION_NUMBER} \
                                 -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:latest \
-                                -f docker/Dockerfile-springboot \
+                                -f ${service}/Dockerfile \
                                 .
                         """
                     }

@@ -1,62 +1,64 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-service
-  namespace: ecommerce-dev
+  name: user-service
+  namespace: ecommerce-prod
   labels:
-    app: product-service
+    app: user-service
+    environment: production
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
-      app: product-service
+      app: user-service
   template:
     metadata:
       labels:
-        app: product-service
+        app: user-service
+        environment: production
     spec:
       containers:
-        - name: product-service
-          image: selimhorri/product-service-ecommerce-boot:dev-latest
+        - name: user-service
+          image: selimhorri/user-service-ecommerce-boot:latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8500
+            - containerPort: 8700
           envFrom:
             - configMapRef:
                 name: microservices-config
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
-            initialDelaySeconds: 15
+              port: 8700
+            initialDelaySeconds: 20
             periodSeconds: 15
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
-            initialDelaySeconds: 30
+              port: 8700
+            initialDelaySeconds: 40
             periodSeconds: 30
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: 250m
+              cpu: 200m
               memory: 512Mi
-      restartPolicy: Always
+            limits:
+              cpu: 400m
+              memory: 1Gi
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-service
-  namespace: ecommerce-dev
+  name: user-service
+  namespace: ecommerce-prod
   labels:
-    app: product-service
+    app: user-service
+    environment: production
 spec:
   type: ClusterIP
   selector:
-    app: product-service
+    app: user-service
   ports:
     - name: http
-      port: 8500
-      targetPort: 8500
+      port: 8700
+      targetPort: 8700

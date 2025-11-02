@@ -1,41 +1,38 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-service
+  name: service-discovery
   namespace: ecommerce-dev
   labels:
-    app: product-service
+    app: service-discovery
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: product-service
+      app: service-discovery
   template:
     metadata:
       labels:
-        app: product-service
+        app: service-discovery
     spec:
       containers:
-        - name: product-service
-          image: selimhorri/product-service-ecommerce-boot:dev-latest
+        - name: service-discovery
+          image: selimhorri/service-discovery-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8500
-          envFrom:
-            - configMapRef:
-                name: microservices-config
+            - containerPort: 8761
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
-            initialDelaySeconds: 15
-            periodSeconds: 15
+              port: 8761
+            initialDelaySeconds: 20
+            periodSeconds: 20
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
-            initialDelaySeconds: 30
-            periodSeconds: 30
+              port: 8761
+            initialDelaySeconds: 40
+            periodSeconds: 40
           resources:
             requests:
               cpu: 100m
@@ -43,20 +40,19 @@ spec:
             limits:
               cpu: 250m
               memory: 512Mi
-      restartPolicy: Always
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-service
+  name: service-discovery
   namespace: ecommerce-dev
   labels:
-    app: product-service
+    app: service-discovery
 spec:
   type: ClusterIP
   selector:
-    app: product-service
+    app: service-discovery
   ports:
     - name: http
-      port: 8500
-      targetPort: 8500
+      port: 8761
+      targetPort: 8761

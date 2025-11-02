@@ -1,41 +1,38 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-service
+  name: cloud-config
   namespace: ecommerce-dev
   labels:
-    app: product-service
+    app: cloud-config
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: product-service
+      app: cloud-config
   template:
     metadata:
       labels:
-        app: product-service
+        app: cloud-config
     spec:
       containers:
-        - name: product-service
-          image: selimhorri/product-service-ecommerce-boot:dev-latest
+        - name: cloud-config
+          image: selimhorri/cloud-config-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8500
-          envFrom:
-            - configMapRef:
-                name: microservices-config
+            - containerPort: 9296
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
-            initialDelaySeconds: 15
-            periodSeconds: 15
+              port: 9296
+            initialDelaySeconds: 20
+            periodSeconds: 20
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
-            initialDelaySeconds: 30
-            periodSeconds: 30
+              port: 9296
+            initialDelaySeconds: 40
+            periodSeconds: 40
           resources:
             requests:
               cpu: 100m
@@ -43,20 +40,19 @@ spec:
             limits:
               cpu: 250m
               memory: 512Mi
-      restartPolicy: Always
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-service
+  name: cloud-config
   namespace: ecommerce-dev
   labels:
-    app: product-service
+    app: cloud-config
 spec:
   type: ClusterIP
   selector:
-    app: product-service
+    app: cloud-config
   ports:
     - name: http
-      port: 8500
-      targetPort: 8500
+      port: 9296
+      targetPort: 9296

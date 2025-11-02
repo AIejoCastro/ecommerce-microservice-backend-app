@@ -7,6 +7,7 @@ pipeline {
         VERSION = "${BUILD_NUMBER}"
         NAMESPACE = 'ecommerce-dev'
         SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
+        APP_VERSION = '0.1.0'
     }
     
     stages {
@@ -75,10 +76,10 @@ pipeline {
                     services.each { service ->
                         sh """
                             docker build \
-                                --build-arg SERVICE_NAME=${service} \
+                                --build-arg PROJECT_VERSION=${APP_VERSION} \
                                 -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
                                 -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:dev-latest \
-                                -f docker/Dockerfile-springboot \
+                                -f ${service}/Dockerfile \
                                 .
                         """
                     }

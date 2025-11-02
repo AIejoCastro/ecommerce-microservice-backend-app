@@ -1,39 +1,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-service
+  name: payment-service
   namespace: ecommerce-dev
   labels:
-    app: product-service
+    app: payment-service
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: product-service
+      app: payment-service
   template:
     metadata:
       labels:
-        app: product-service
+        app: payment-service
     spec:
       containers:
-        - name: product-service
-          image: selimhorri/product-service-ecommerce-boot:dev-latest
+        - name: payment-service
+          image: selimhorri/payment-service-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8500
+            - containerPort: 8400
           envFrom:
             - configMapRef:
                 name: microservices-config
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
+              port: 8400
             initialDelaySeconds: 15
             periodSeconds: 15
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
+              port: 8400
             initialDelaySeconds: 30
             periodSeconds: 30
           resources:
@@ -48,15 +48,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-service
+  name: payment-service
   namespace: ecommerce-dev
   labels:
-    app: product-service
+    app: payment-service
 spec:
   type: ClusterIP
   selector:
-    app: product-service
+    app: payment-service
   ports:
     - name: http
-      port: 8500
-      targetPort: 8500
+      port: 8400
+      targetPort: 8400

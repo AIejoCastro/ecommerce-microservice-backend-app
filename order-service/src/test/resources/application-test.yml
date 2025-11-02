@@ -16,6 +16,10 @@ spring:
   cloud:
     config:
       enabled: false
+    loadbalancer:
+      enabled: false
+  main:
+    allow-bean-definition-overriding: true
   config:
     import: optional:classpath:/
 
@@ -27,3 +31,7 @@ logging:
   level:
     org.springframework: WARN
     com.selimhorri: INFO
+
+eureka:
+  client:
+    enabled: false

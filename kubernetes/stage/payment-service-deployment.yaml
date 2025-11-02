@@ -1,62 +1,64 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-service
-  namespace: ecommerce-dev
+  name: payment-service
+  namespace: ecommerce-stage
   labels:
-    app: product-service
+    app: payment-service
+    environment: staging
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
-      app: product-service
+      app: payment-service
   template:
     metadata:
       labels:
-        app: product-service
+        app: payment-service
+        environment: staging
     spec:
       containers:
-        - name: product-service
-          image: selimhorri/product-service-ecommerce-boot:dev-latest
+        - name: payment-service
+          image: selimhorri/payment-service-ecommerce-boot:stage-latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8500
+            - containerPort: 8400
           envFrom:
             - configMapRef:
                 name: microservices-config
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
-            initialDelaySeconds: 15
+              port: 8400
+            initialDelaySeconds: 20
             periodSeconds: 15
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8500
-            initialDelaySeconds: 30
+              port: 8400
+            initialDelaySeconds: 40
             periodSeconds: 30
           resources:
             requests:
-              cpu: 100m
+              cpu: 150m
               memory: 256Mi
             limits:
-              cpu: 250m
+              cpu: 300m
               memory: 512Mi
-      restartPolicy: Always
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-service
-  namespace: ecommerce-dev
+  name: payment-service
+  namespace: ecommerce-stage
   labels:
-    app: product-service
+    app: payment-service
+    environment: staging
 spec:
   type: ClusterIP
   selector:
-    app: product-service
+    app: payment-service
   ports:
     - name: http
-      port: 8500
-      targetPort: 8500
+      port: 8400
+      targetPort: 8400

@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-config
+  namespace: ecommerce-prod
+  labels:
+    app: cloud-config
+    environment: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloud-config
+  template:
+    metadata:
+      labels:
+        app: cloud-config
+        environment: production
+    spec:
+      containers:
+        - name: cloud-config
+          image: selimhorri/cloud-config-ecommerce-boot:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9296
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 9296
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 9296
+            initialDelaySeconds: 40
+            periodSeconds: 40
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-config
+  namespace: ecommerce-prod
+  labels:
+    app: cloud-config
+    environment: production
+spec:
+  type: ClusterIP
+  selector:
+    app: cloud-config
+  ports:
+    - name: http
+      port: 9296
+      targetPort: 9296

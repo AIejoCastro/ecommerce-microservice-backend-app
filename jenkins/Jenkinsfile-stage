@@ -7,6 +7,7 @@ pipeline {
         NAMESPACE = 'ecommerce-stage'
         SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         MAVEN_OPTS = '-Xmx1024m'
+        APP_VERSION = '0.1.0'
     }
 
     stages {
@@ -86,10 +87,10 @@ pipeline {
                     services.each { service ->
                         sh """
                             docker build \
-                                --build-arg SERVICE_NAME=${service} \
+                                --build-arg PROJECT_VERSION=${APP_VERSION} \
                                 -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
                                 -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:stage-latest \
-                                -f docker/Dockerfile-springboot \
+                                -f ${service}/Dockerfile \
                                 .
                         """
                     }

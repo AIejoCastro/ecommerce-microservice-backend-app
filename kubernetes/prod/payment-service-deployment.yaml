@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: ecommerce-prod
+  labels:
+    app: payment-service
+    environment: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        environment: production
+    spec:
+      containers:
+        - name: payment-service
+          image: selimhorri/payment-service-ecommerce-boot:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8400
+          envFrom:
+            - configMapRef:
+                name: microservices-config
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8400
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8400
+            initialDelaySeconds: 40
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 400m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: ecommerce-prod
+  labels:
+    app: payment-service
+    environment: production
+spec:
+  type: ClusterIP
+  selector:
+    app: payment-service
+  ports:
+    - name: http
+      port: 8400
+      targetPort: 8400

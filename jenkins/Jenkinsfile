@@ -160,11 +160,11 @@ pipeline {
     post {
         success {
             echo "Pipeline DEV completed successfully!"
-            slackSend(color: 'good', message: "DEV Deploy Success - Build #${BUILD_NUMBER}")
+            notifySlack(color: 'good', message: "DEV Deploy Success - Build #${BUILD_NUMBER}")
         }
         failure {
             echo "Pipeline DEV failed!"
-            slackSend(color: 'danger', message: "DEV Deploy Failed - Build #${BUILD_NUMBER}")
+            notifySlack(color: 'danger', message: "DEV Deploy Failed - Build #${BUILD_NUMBER}")
         }
         always {
             cleanWs()
@@ -176,7 +176,8 @@ pipeline {
 def buildService(serviceName) {
     echo "Building ${serviceName}..."
     dir(serviceName) {
-        sh 'mvn clean package -DskipTests'
+        sh 'chmod +x mvnw'
+        sh './mvnw clean package -DskipTests'
     }
 }
 
@@ -191,5 +192,13 @@ def validateBranch(expectedBranch) {
     }
     if (!branch || branch != expectedBranch) {
         error "Detected branch '${branch ?: 'unknown'}'; this pipeline must run on '${expectedBranch}'."
+    }
+}
+
+def notifySlack(Map args = [:]) {
+    try {
+        slackSend(color: args.color ?: 'good', message: args.message ?: '')
+    } catch (NoSuchMethodError | MissingMethodException ignored) {
+        echo 'Slack plugin not installed; skipping Slack notification.'
     }
 }

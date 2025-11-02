@@ -8,6 +8,7 @@ pipeline {
         SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         MAVEN_OPTS = '-Xmx1024m'
         APP_VERSION = '0.1.0'
+        EXPECTED_BRANCH = 'stage'
     }
 
     stages {
@@ -16,6 +17,7 @@ pipeline {
                 script {
                     echo "Cloning repository for STAGING..."
                     checkout scm
+                    validateBranch(env.EXPECTED_BRANCH)
                     sh '''
                     echo "Commit Info:"
                     git log -1 --pretty=format:"%h - %an (%ae): %s"
@@ -384,5 +386,19 @@ def buildAndTest(serviceName) {
             mvn clean test package
             mvn jacoco:report || true
         '''
+    }
+}
+
+// Abort early if the pipeline runs on an unexpected branch so promotions stay linear
+def validateBranch(expectedBranch) {
+    def branch = env.BRANCH_NAME ?: env.GIT_BRANCH
+    if (!branch || branch == 'HEAD') {
+        branch = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
+    }
+    if (branch?.contains('/')) {
+        branch = branch.tokenize('/').last()
+    }
+    if (!branch || branch != expectedBranch) {
+        error "Detected branch '${branch ?: 'unknown'}'; this pipeline must run on '${expectedBranch}'."
     }
 }

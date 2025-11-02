@@ -8,6 +8,7 @@ pipeline {
         NAMESPACE = 'ecommerce-dev'
         SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         APP_VERSION = '0.1.0'
+        EXPECTED_BRANCH = 'dev'
     }
     
     stages {
@@ -16,6 +17,7 @@ pipeline {
                 script {
                     echo "Cloning repository..."
                     checkout scm
+                    validateBranch(env.EXPECTED_BRANCH)
                     sh 'git log -1 --pretty=format:"%h - %an: %s"'
                 }
             }
@@ -175,5 +177,19 @@ def buildService(serviceName) {
     echo "Building ${serviceName}..."
     dir(serviceName) {
         sh 'mvn clean package -DskipTests'
+    }
+}
+
+// Abort early if pipeline runs from the wrong branch to keep environment isolation intact
+def validateBranch(expectedBranch) {
+    def branch = env.BRANCH_NAME ?: env.GIT_BRANCH
+    if (!branch || branch == 'HEAD') {
+        branch = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
+    }
+    if (branch?.contains('/')) {
+        branch = branch.tokenize('/').last()
+    }
+    if (!branch || branch != expectedBranch) {
+        error "Detected branch '${branch ?: 'unknown'}'; this pipeline must run on '${expectedBranch}'."
     }
 }

@@ -25,6 +25,7 @@ pipeline {
         SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         MAVEN_OPTS = '-Xmx1024m'
         APP_VERSION = '0.1.0'
+    EXPECTED_BRANCH = 'prod'
         
         // Versionado semántico
         CURRENT_VERSION = sh(
@@ -39,15 +40,12 @@ pipeline {
                 script {
                     echo "🔐 Running pre-flight checks..."
                     
-                    // Verificar que estamos en master/main
+                    // Verificar que estamos desplegando desde la rama productiva esperada
                     def branch = sh(
                         script: 'git branch --show-current',
                         returnStdout: true
                     ).trim()
-                    
-                    if (branch != 'master' && branch != 'main') {
-                        error("❌ Production deploys only allowed from master/main branch")
-                    }
+                    validateBranch(env.EXPECTED_BRANCH, branch)
                     
                     // Verificar que no hay cambios sin commit
                     sh '''
@@ -519,6 +517,20 @@ pipeline {
         always {
             cleanWs()
         }
+    }
+}
+
+// Validate that the pipeline runs on the expected git branch before promoting artifacts
+def validateBranch(expectedBranch, detectedBranch = null) {
+    def branch = detectedBranch ?: env.BRANCH_NAME ?: env.GIT_BRANCH
+    if (!branch || branch == 'HEAD') {
+        branch = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
+    }
+    if (branch?.contains('/')) {
+        branch = branch.tokenize('/').last()
+    }
+    if (!branch || branch != expectedBranch) {
+        error "Detected branch '${branch ?: 'unknown'}'; this production pipeline must run on '${expectedBranch}'."
     }
 }
 

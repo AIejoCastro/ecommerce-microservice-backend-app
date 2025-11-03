@@ -216,7 +216,7 @@ pipeline {
                                     -n ${NAMESPACE} || \
                                 kubectl apply --validate=false -f kubernetes/dev/${service}-deployment.yaml
                                 
-                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=5m
+                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=6m
                             """
                         }
                         
@@ -234,7 +234,7 @@ pipeline {
                                     -n ${NAMESPACE} || \
                                 kubectl apply --validate=false -f kubernetes/dev/${service}-deployment.yaml
                                 
-                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=5m
+                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=8m
                             """
                         }
                     }

@@ -6,10 +6,14 @@ pipeline {
         DOCKER_REGISTRY = 'alejocastro'
         VERSION = "${BUILD_NUMBER}"
         NAMESPACE = 'ecommerce-dev'
-        SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
+        // Infrastructure services must be deployed first
+        INFRA_SERVICES = 'cloud-config,service-discovery'
+        // Application services depend on infrastructure
+        APP_SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
+        SERVICES = 'cloud-config,service-discovery,api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         APP_VERSION = '0.1.0'
         EXPECTED_BRANCH = 'dev'
-    KUBE_CONFIG_CREDENTIALS_ID = 'kubeconfig-dev'
+        KUBE_CONFIG_CREDENTIALS_ID = 'kubeconfig-dev'
     }
     
     stages {
@@ -26,6 +30,20 @@ pipeline {
         
         stage('Build Services') {
             parallel {
+                stage('Build Cloud Config') {
+                    steps {
+                        script {
+                            buildService('cloud-config')
+                        }
+                    }
+                }
+                stage('Build Service Discovery') {
+                    steps {
+                        script {
+                            buildService('service-discovery')
+                        }
+                    }
+                }
                 stage('Build API Gateway') {
                     steps {
                         script {
@@ -120,17 +138,34 @@ pipeline {
                         // Aplicar ConfigMaps
                         sh "kubectl apply --validate=false -f kubernetes/dev/configmap.yaml"
                         
-                        // Desplegar servicios
-                        def services = env.SERVICES.split(',')
-                        services.each { service ->
+                        // Deploy infrastructure services first
+                        echo "Deploying infrastructure services..."
+                        def infraServices = env.INFRA_SERVICES.split(',')
+                        infraServices.each { service ->
                             sh """
-                                # Actualizar imagen en deployment
                                 kubectl set image deployment/${service} \
                                     ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
                                     -n ${NAMESPACE} || \
                                 kubectl apply --validate=false -f kubernetes/dev/${service}-deployment.yaml
                                 
-                                # Esperar rollout
+                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=5m
+                            """
+                        }
+                        
+                        // Wait a bit for services to be fully ready
+                        echo "Waiting for infrastructure services to stabilize..."
+                        sh "sleep 15"
+                        
+                        // Deploy application services
+                        echo "Deploying application services..."
+                        def appServices = env.APP_SERVICES.split(',')
+                        appServices.each { service ->
+                            sh """
+                                kubectl set image deployment/${service} \
+                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
+                                    -n ${NAMESPACE} || \
+                                kubectl apply --validate=false -f kubernetes/dev/${service}-deployment.yaml
+                                
                                 kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=5m
                             """
                         }

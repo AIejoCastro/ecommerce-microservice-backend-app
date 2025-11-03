@@ -2,6 +2,13 @@
 pipeline {
     agent any
     
+    triggers {
+        // GitHub webhook trigger - requires webhook configuration in GitHub
+        githubPush()
+        // Poll SCM every 5 minutes as backup (only triggers if changes detected)
+        pollSCM('H/5 * * * *')
+    }
+    
     environment {
         DOCKER_REGISTRY = 'alejocastro'
         VERSION = "${BUILD_NUMBER}"

@@ -82,7 +82,7 @@ pipeline {
                                 -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
                                 -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:dev-latest \
                                 -f ${service}/Dockerfile \
-                                .
+                                ${service}
                         """
                     }
                 }
@@ -192,13 +192,5 @@ def validateBranch(expectedBranch) {
     }
     if (!branch || branch != expectedBranch) {
         error "Detected branch '${branch ?: 'unknown'}'; this pipeline must run on '${expectedBranch}'."
-    }
-}
-
-def notifySlack(Map args = [:]) {
-    try {
-        slackSend(color: args.color ?: 'good', message: args.message ?: '')
-    } catch (NoSuchMethodError | MissingMethodException ignored) {
-        echo 'Slack plugin not installed; skipping Slack notification.'
     }
 }

@@ -160,11 +160,9 @@ pipeline {
     post {
         success {
             echo "Pipeline DEV completed successfully!"
-            notifySlack(color: 'good', message: "DEV Deploy Success - Build #${BUILD_NUMBER}")
         }
         failure {
             echo "Pipeline DEV failed!"
-            notifySlack(color: 'danger', message: "DEV Deploy Failed - Build #${BUILD_NUMBER}")
         }
         always {
             cleanWs()

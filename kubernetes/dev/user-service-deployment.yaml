@@ -28,14 +28,14 @@ spec:
             httpGet:
               path: /user-service/actuator/health
               port: 8700
-            initialDelaySeconds: 90
+            initialDelaySeconds: 150
             periodSeconds: 10
             failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /user-service/actuator/health
               port: 8700
-            initialDelaySeconds: 120
+            initialDelaySeconds: 180
             periodSeconds: 30
             failureThreshold: 3
           resources:

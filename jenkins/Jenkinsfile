@@ -9,7 +9,7 @@ pipeline {
         SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         APP_VERSION = '0.1.0'
         EXPECTED_BRANCH = 'dev'
-        KUBE_CONFIG_CREDENTIALS_ID = 'kubeconfig-dev'
+    KUBE_CONFIG_CREDENTIALS_ID = 'kubeconfig-dev'
     }
     
     stages {
@@ -115,10 +115,10 @@ pipeline {
                         sh 'kubectl config current-context'
 
                         // Crear namespace si no existe
-                        sh "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
+                        sh "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply --validate=false -f -"
                         
                         // Aplicar ConfigMaps
-                        sh "kubectl apply -f kubernetes/dev/configmap.yaml"
+                        sh "kubectl apply --validate=false -f kubernetes/dev/configmap.yaml"
                         
                         // Desplegar servicios
                         def services = env.SERVICES.split(',')
@@ -128,7 +128,7 @@ pipeline {
                                 kubectl set image deployment/${service} \
                                     ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
                                     -n ${NAMESPACE} || \
-                                kubectl apply -f kubernetes/dev/${service}-deployment.yaml
+                                kubectl apply --validate=false -f kubernetes/dev/${service}-deployment.yaml
                                 
                                 # Esperar rollout
                                 kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=5m

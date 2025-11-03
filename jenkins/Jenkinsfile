@@ -3,7 +3,7 @@ pipeline {
     agent any
     
     environment {
-        DOCKER_REGISTRY = 'selimhorri'
+        DOCKER_REGISTRY = 'alejocastro'
         VERSION = "${BUILD_NUMBER}"
         NAMESPACE = 'ecommerce-dev'
         SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'

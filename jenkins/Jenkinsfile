@@ -9,6 +9,7 @@ pipeline {
         SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         APP_VERSION = '0.1.0'
         EXPECTED_BRANCH = 'dev'
+        KUBE_CONFIG_CREDENTIALS_ID = 'kubeconfig-dev'
     }
     
     stages {
@@ -110,26 +111,29 @@ pipeline {
             steps {
                 script {
                     echo "Deploying to Kubernetes ${NAMESPACE}..."
-                    
-                    // Crear namespace si no existe
-                    sh "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
-                    
-                    // Aplicar ConfigMaps
-                    sh "kubectl apply -f kubernetes/dev/configmap.yaml"
-                    
-                    // Desplegar servicios
-                    def services = env.SERVICES.split(',')
-                    services.each { service ->
-                        sh """
-                            # Actualizar imagen en deployment
-                            kubectl set image deployment/${service} \
-                                ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
-                                -n ${NAMESPACE} || \
-                            kubectl apply -f kubernetes/dev/${service}-deployment.yaml
-                            
-                            # Esperar rollout
-                            kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=5m
-                        """
+                    withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
+                        sh 'kubectl config current-context'
+
+                        // Crear namespace si no existe
+                        sh "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
+                        
+                        // Aplicar ConfigMaps
+                        sh "kubectl apply -f kubernetes/dev/configmap.yaml"
+                        
+                        // Desplegar servicios
+                        def services = env.SERVICES.split(',')
+                        services.each { service ->
+                            sh """
+                                # Actualizar imagen en deployment
+                                kubectl set image deployment/${service} \
+                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
+                                    -n ${NAMESPACE} || \
+                                kubectl apply -f kubernetes/dev/${service}-deployment.yaml
+                                
+                                # Esperar rollout
+                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=5m
+                            """
+                        }
                     }
                 }
             }
@@ -139,19 +143,21 @@ pipeline {
             steps {
                 script {
                     echo "🧪 Running smoke tests..."
-                    sh '''
-                        sleep 30
-                        
-                        # Test API Gateway
-                        GATEWAY_URL=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
-                        curl -f http://${GATEWAY_URL}:8080/actuator/health || exit 1
-                        
-                        # Test User Service
-                        USER_URL=$(kubectl get svc user-service -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
-                        curl -f http://${USER_URL}:8700/actuator/health || exit 1
-                        
-                        echo "All smoke tests passed!"
-                    '''
+                    withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
+                        sh '''
+                            sleep 30
+                            
+                            # Test API Gateway
+                            GATEWAY_URL=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                            curl -f http://${GATEWAY_URL}:8080/actuator/health || exit 1
+                            
+                            # Test User Service
+                            USER_URL=$(kubectl get svc user-service -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                            curl -f http://${USER_URL}:8700/actuator/health || exit 1
+                            
+                            echo "All smoke tests passed!"
+                        '''
+                    }
                 }
             }
         }

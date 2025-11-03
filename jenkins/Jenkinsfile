@@ -323,7 +323,8 @@ def runUnitTests(serviceName) {
     dir(serviceName) {
         sh '''
             chmod +x mvnw
-            ./mvnw test -Dtest=!*E2E* -DfailIfNoTests=false -Dspring.main.allow-bean-definition-overriding=true || {
+            # Exclude E2E tests and Integration tests that require external services
+            ./mvnw test -Dtest=!*E2E*,!*IntegrationTest -DfailIfNoTests=false -Dspring.main.allow-bean-definition-overriding=true || {
                 echo "⚠️ Some unit tests failed for ''' + serviceName + '''"
                 exit 1
             }

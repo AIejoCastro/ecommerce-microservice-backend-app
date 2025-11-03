@@ -28,13 +28,13 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8500
-            initialDelaySeconds: 15
-            periodSeconds: 15
+            initialDelaySeconds: 90
+            periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 8500
-            initialDelaySeconds: 30
+            initialDelaySeconds: 120
             periodSeconds: 30
           resources:
             requests:

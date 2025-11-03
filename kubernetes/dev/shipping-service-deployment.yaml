@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: shipping-service
-          image: selimhorri/shipping-service-ecommerce-boot:dev-latest
+          image: alejocastro/shipping-service-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8600

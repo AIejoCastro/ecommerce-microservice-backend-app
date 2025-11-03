@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: selimhorri/user-service-ecommerce-boot:dev-latest
+          image: alejocastro/user-service-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8700

@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: cloud-config
-          image: selimhorri/cloud-config-ecommerce-boot:dev-latest
+          image: alejocastro/cloud-config-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9296

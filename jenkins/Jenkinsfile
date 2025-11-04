@@ -240,69 +240,102 @@ pipeline {
                             set -e
                         """
                         
-                        // Deploy infrastructure services first
+                        // Deploy infrastructure services first (CRITICAL - must be ready)
                         echo "Deploying infrastructure services..."
                         def infraServices = env.INFRA_SERVICES.split(',')
                         infraServices.each { service ->
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Deploying ${service}..."
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            
+                            // First, delete old failed pods to start fresh
                             sh """
-                                set +e
-                                echo "Deploying ${service}..."
+                                kubectl delete pods -n ${NAMESPACE} -l app=${service} --field-selector=status.phase=Failed --ignore-not-found=true --request-timeout=30s || true
+                            """
+                            
+                            // Apply deployment (don't use set image for infrastructure)
+                            sh """
+                                kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml --request-timeout=60s
+                            """
+                            
+                            // Wait for deployment to be ready with proper timeout
+                            sh """
+                                echo "Waiting for ${service} to be ready (this may take several minutes)..."
                                 
-                                # Try to update existing deployment first
-                                kubectl set image deployment/${service} \
-                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
-                                    -n ${NAMESPACE} \
-                                    --request-timeout=30s 2>/dev/null
-                                
-                                # If update fails, apply the deployment file
-                                if [ \$? -ne 0 ]; then
-                                    echo "Update failed, applying deployment file..."
-                                    kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml --request-timeout=60s
-                                fi
-                                
-                                # Wait for rollout with extended timeout
-                                echo "Waiting for ${service} to be ready..."
-                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=6m || {
-                                    echo "⚠️ Rollout status check failed, checking pods..."
-                                    kubectl get pods -n ${NAMESPACE} -l app=${service} || true
+                                # Wait up to 10 minutes for the deployment to be ready
+                                kubectl wait --for=condition=available --timeout=10m deployment/${service} -n ${NAMESPACE} || {
+                                    echo "❌ ${service} failed to become ready"
+                                    echo "Pod status:"
+                                    kubectl get pods -n ${NAMESPACE} -l app=${service}
+                                    echo "Recent logs:"
+                                    kubectl logs -n ${NAMESPACE} -l app=${service} --tail=50 --all-containers=true || true
+                                    exit 1
                                 }
-                                set -e
+                                
+                                echo "✅ ${service} is ready"
                             """
                         }
                         
-                        // Wait a bit for services to be fully ready
-                        echo "Waiting for infrastructure services to stabilize..."
-                        sh "sleep 15"
+                        // Infrastructure is ready, give extra time for service registration
+                        echo "Infrastructure services are ready. Waiting for service mesh to stabilize..."
+                        sh """
+                            sleep 30
+                            echo "✅ Infrastructure services status:"
+                            kubectl get pods -n ${NAMESPACE} -l 'app in (cloud-config,service-discovery)'
+                        """
                         
-                        // Deploy application services
+                        // Deploy application services (depends on infrastructure)
                         echo "Deploying application services..."
                         def appServices = env.APP_SERVICES.split(',')
                         appServices.each { service ->
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Deploying ${service}..."
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            
+                            // Delete old failed pods
                             sh """
-                                set +e
-                                echo "Deploying ${service}..."
+                                kubectl delete pods -n ${NAMESPACE} -l app=${service} --field-selector=status.phase=Failed --ignore-not-found=true --request-timeout=30s || true
+                            """
+                            
+                            // Apply deployment
+                            sh """
+                                kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml --request-timeout=60s
+                            """
+                            
+                            // Wait for deployment to be ready
+                            sh """
+                                echo "Waiting for ${service} to be ready (this may take several minutes)..."
                                 
-                                # Try to update existing deployment first
-                                kubectl set image deployment/${service} \
-                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
-                                    -n ${NAMESPACE} \
-                                    --request-timeout=30s 2>/dev/null
-                                
-                                # If update fails, apply the deployment file
-                                if [ \$? -ne 0 ]; then
-                                    echo "Update failed, applying deployment file..."
-                                    kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml --request-timeout=60s
-                                fi
-                                
-                                # Wait for rollout with extended timeout
-                                echo "Waiting for ${service} to be ready..."
-                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=8m || {
-                                    echo "⚠️ Rollout status check failed, checking pods..."
-                                    kubectl get pods -n ${NAMESPACE} -l app=${service} || true
+                                # Wait up to 10 minutes for the deployment to be ready
+                                kubectl wait --for=condition=available --timeout=10m deployment/${service} -n ${NAMESPACE} || {
+                                    echo "❌ ${service} failed to become ready"
+                                    echo "Pod status:"
+                                    kubectl get pods -n ${NAMESPACE} -l app=${service}
+                                    echo "Recent logs:"
+                                    kubectl logs -n ${NAMESPACE} -l app=${service} --tail=50 --all-containers=true || true
+                                    exit 1
                                 }
-                                set -e
+                                
+                                echo "✅ ${service} is ready"
                             """
                         }
+                        
+                        // Verify all services are healthy
+                        sh """
+                            echo ""
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "✅ All services deployed successfully!"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo ""
+                            echo "Deployments:"
+                            kubectl get deployments -n ${NAMESPACE}
+                            echo ""
+                            echo "Pods:"
+                            kubectl get pods -n ${NAMESPACE}
+                            echo ""
+                            echo "Services:"
+                            kubectl get svc -n ${NAMESPACE}
+                        """
                     }
                 }
             }

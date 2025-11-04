@@ -214,13 +214,13 @@ pipeline {
                         
                         // Deploy cloud-config
                         sh """
-                            kubectl set image deployment/cloud-config cloud-config=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/cloud-config-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl set image deployment/cloud-config cloud-config=${DOCKER_REGISTRY}/cloud-config-ecommerce-boot:${VERSION} -n ${NAMESPACE}
                             kubectl rollout status deployment/cloud-config -n ${NAMESPACE} --timeout=6m
                         """
                         
                         // Deploy service-discovery
                         sh """
-                            kubectl set image deployment/service-discovery service-discovery=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/service-discovery-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl set image deployment/service-discovery service-discovery=${DOCKER_REGISTRY}/service-discovery-ecommerce-boot:${VERSION} -n ${NAMESPACE}
                             kubectl rollout status deployment/service-discovery -n ${NAMESPACE} --timeout=6m
                         """
                         
@@ -233,37 +233,37 @@ pipeline {
                         
                         // Deploy api-gateway
                         sh """
-                            kubectl set image deployment/api-gateway api-gateway=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/api-gateway-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl set image deployment/api-gateway api-gateway=${DOCKER_REGISTRY}/api-gateway-ecommerce-boot:${VERSION} -n ${NAMESPACE}
                             kubectl rollout status deployment/api-gateway -n ${NAMESPACE} --timeout=8m
                         """
                         
                         // Deploy user-service
                         sh """
-                            kubectl set image deployment/user-service user-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/user-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl set image deployment/user-service user-service=${DOCKER_REGISTRY}/user-service-ecommerce-boot:${VERSION} -n ${NAMESPACE}
                             kubectl rollout status deployment/user-service -n ${NAMESPACE} --timeout=8m
                         """
                         
                         // Deploy product-service
                         sh """
-                            kubectl set image deployment/product-service product-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/product-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl set image deployment/product-service product-service=${DOCKER_REGISTRY}/product-service-ecommerce-boot:${VERSION} -n ${NAMESPACE}
                             kubectl rollout status deployment/product-service -n ${NAMESPACE} --timeout=8m
                         """
                         
                         // Deploy order-service
                         sh """
-                            kubectl set image deployment/order-service order-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/order-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl set image deployment/order-service order-service=${DOCKER_REGISTRY}/order-service-ecommerce-boot:${VERSION} -n ${NAMESPACE}
                             kubectl rollout status deployment/order-service -n ${NAMESPACE} --timeout=8m
                         """
                         
                         // Deploy payment-service
                         sh """
-                            kubectl set image deployment/payment-service payment-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/payment-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl set image deployment/payment-service payment-service=${DOCKER_REGISTRY}/payment-service-ecommerce-boot:${VERSION} -n ${NAMESPACE}
                             kubectl rollout status deployment/payment-service -n ${NAMESPACE} --timeout=8m
                         """
                         
                         // Deploy shipping-service
                         sh """
-                            kubectl set image deployment/shipping-service shipping-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/shipping-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl set image deployment/shipping-service shipping-service=${DOCKER_REGISTRY}/shipping-service-ecommerce-boot:${VERSION} -n ${NAMESPACE}
                             kubectl rollout status deployment/shipping-service -n ${NAMESPACE} --timeout=8m
                         """
                     }

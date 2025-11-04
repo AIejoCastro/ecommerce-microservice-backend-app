@@ -199,41 +199,38 @@ pipeline {
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh 'kubectl config current-context'
 
-                        // Crear namespace y recursos con kubectl create/delete
+                        // Crear namespace y aplicar recursos
                         sh """
                             kubectl create namespace ${NAMESPACE} 2>/dev/null || true
-                            kubectl delete configmap microservices-config -n ${NAMESPACE} --ignore-not-found=true
-                            kubectl create -f kubernetes/stage/configmap.yaml
+                            kubectl apply -f kubernetes/stage/configmap.yaml
                         """
 
-                        // Deploy infrastructure services first
+                        // Deploy infrastructure services first with retry logic
                         echo "Deploying infrastructure services..."
                         def infraServices = env.INFRA_SERVICES.split(',')
                         infraServices.each { service ->
-                            sh """
-                                kubectl delete deployment ${service} -n ${NAMESPACE} --ignore-not-found=true
-                                kubectl delete service ${service} -n ${NAMESPACE} --ignore-not-found=true
-                                sleep 3
-                                kubectl create -f kubernetes/stage/${service}-deployment.yaml
-                                sleep 10
-                            """
+                            retry(3) {
+                                sh """
+                                    kubectl apply -f kubernetes/stage/${service}-deployment.yaml
+                                    sleep 5
+                                """
+                            }
                         }
                         
-                        // Wait a bit for services to be fully ready
+                        // Wait for infrastructure services to be ready
                         echo "Waiting for infrastructure services to stabilize..."
                         sh "sleep 15"
                         
-                        // Deploy application services
+                        // Deploy application services with retry logic
                         echo "Deploying application services..."
                         def appServices = env.APP_SERVICES.split(',')
                         appServices.each { service ->
-                            sh """
-                                kubectl delete deployment ${service} -n ${NAMESPACE} --ignore-not-found=true
-                                kubectl delete service ${service} -n ${NAMESPACE} --ignore-not-found=true
-                                sleep 3
-                                kubectl create -f kubernetes/stage/${service}-deployment.yaml
-                                sleep 10
-                            """
+                            retry(3) {
+                                sh """
+                                    kubectl apply -f kubernetes/stage/${service}-deployment.yaml
+                                    sleep 5
+                                """
+                            }
                         }
                     }
                 }

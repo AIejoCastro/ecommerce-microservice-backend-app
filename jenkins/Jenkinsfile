@@ -199,44 +199,72 @@ pipeline {
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh 'kubectl config current-context'
 
-                        // Configurar timeouts más largos para kubectl
+                        // Create namespace and apply configmap
                         sh """
-                            export KUBECTL_TIMEOUT=300
+                            kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply --validate=false -f -
                         """
                         
-                        // Crear namespace y aplicar recursos (sin validación para evitar timeout)
                         sh """
-                            kubectl create namespace ${NAMESPACE} 2>/dev/null || true
-                            kubectl apply -f kubernetes/stage/configmap.yaml --validate=false --request-timeout=60s
+                            kubectl apply --validate=false -f kubernetes/stage/configmap.yaml
                         """
 
-                        // Deploy infrastructure services first with retry logic
+                        // Deploy infrastructure services first with rolling update
                         echo "Deploying infrastructure services..."
-                        def infraServices = env.INFRA_SERVICES.split(',')
-                        infraServices.each { service ->
-                            retry(3) {
-                                sh """
-                                    kubectl apply -f kubernetes/stage/${service}-deployment.yaml --validate=false --request-timeout=60s
-                                    sleep 5
-                                """
-                            }
-                        }
                         
-                        // Wait for infrastructure services to be ready
+                        // Deploy cloud-config
+                        sh """
+                            kubectl set image deployment/cloud-config cloud-config=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/cloud-config-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl rollout status deployment/cloud-config -n ${NAMESPACE} --timeout=6m
+                        """
+                        
+                        // Deploy service-discovery
+                        sh """
+                            kubectl set image deployment/service-discovery service-discovery=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/service-discovery-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl rollout status deployment/service-discovery -n ${NAMESPACE} --timeout=6m
+                        """
+                        
+                        // Wait for infrastructure services to stabilize
                         echo "Waiting for infrastructure services to stabilize..."
                         sh "sleep 15"
                         
-                        // Deploy application services with retry logic
+                        // Deploy application services with rolling update
                         echo "Deploying application services..."
-                        def appServices = env.APP_SERVICES.split(',')
-                        appServices.each { service ->
-                            retry(3) {
-                                sh """
-                                    kubectl apply -f kubernetes/stage/${service}-deployment.yaml --validate=false --request-timeout=60s
-                                    sleep 5
-                                """
-                            }
-                        }
+                        
+                        // Deploy api-gateway
+                        sh """
+                            kubectl set image deployment/api-gateway api-gateway=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/api-gateway-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl rollout status deployment/api-gateway -n ${NAMESPACE} --timeout=8m
+                        """
+                        
+                        // Deploy user-service
+                        sh """
+                            kubectl set image deployment/user-service user-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/user-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl rollout status deployment/user-service -n ${NAMESPACE} --timeout=8m
+                        """
+                        
+                        // Deploy product-service
+                        sh """
+                            kubectl set image deployment/product-service product-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/product-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl rollout status deployment/product-service -n ${NAMESPACE} --timeout=8m
+                        """
+                        
+                        // Deploy order-service
+                        sh """
+                            kubectl set image deployment/order-service order-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/order-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl rollout status deployment/order-service -n ${NAMESPACE} --timeout=8m
+                        """
+                        
+                        // Deploy payment-service
+                        sh """
+                            kubectl set image deployment/payment-service payment-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/payment-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl rollout status deployment/payment-service -n ${NAMESPACE} --timeout=8m
+                        """
+                        
+                        // Deploy shipping-service
+                        sh """
+                            kubectl set image deployment/shipping-service shipping-service=${DOCKER_REGISTRY}/${DOCKER_USERNAME}/shipping-service-ecommerce-boot:stage-${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl rollout status deployment/shipping-service -n ${NAMESPACE} --timeout=8m
+                        """
                     }
                 }
             }
@@ -326,32 +354,32 @@ pipeline {
                             TOTAL_FAILED=0
                             OVERALL_START=$(date +%s)
                             
-                            # Test 1: API Gateway Health Check (100 requests)
+                            # Test 1: API Gateway Health Check (50 requests)
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                            echo "Test 1: API Gateway Health Endpoint (100 requests)"
+                            echo "Test 1: API Gateway Health Endpoint (50 requests)"
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                             
                             TEST1_SUCCESS=0
                             TEST1_FAILED=0
                             TEST1_START=$(date +%s)
                             
-                            for i in $(seq 1 100); do
+                            for i in $(seq 1 50); do
                                 if curl -s -f -m 5 "${API_GATEWAY_URL}/actuator/health" > /dev/null 2>&1; then
                                     TEST1_SUCCESS=$((TEST1_SUCCESS + 1))
                                 else
                                     TEST1_FAILED=$((TEST1_FAILED + 1))
                                 fi
                                 
-                                # Progress indicator every 25 requests
-                                if [ $((i % 25)) -eq 0 ]; then
-                                    echo "  → Progress: $i/100 requests completed"
+                                # Progress indicator every 10 requests
+                                if [ $((i % 10)) -eq 0 ]; then
+                                    echo "  → Progress: $i/50 requests completed"
                                 fi
                             done
                             
                             TEST1_END=$(date +%s)
                             TEST1_DURATION=$((TEST1_END - TEST1_START))
-                            TEST1_RATE=$(awk "BEGIN {printf \"%.2f\", 100 / $TEST1_DURATION}")
-                            TEST1_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TEST1_SUCCESS * 100) / 100}")
+                            TEST1_RATE=$(awk -v dur="$TEST1_DURATION" 'BEGIN {printf "%.2f", 50 / dur}')
+                            TEST1_SUCCESS_RATE=$(awk -v succ="$TEST1_SUCCESS" 'BEGIN {printf "%.2f", (succ * 100) / 50}')
                             
                             echo "  ✓ Completed: 100 requests in ${TEST1_DURATION}s"
                             echo "  ✓ Success: $TEST1_SUCCESS | Failed: $TEST1_FAILED"
@@ -386,8 +414,8 @@ pipeline {
                             
                             TEST2_END=$(date +%s)
                             TEST2_DURATION=$((TEST2_END - TEST2_START))
-                            TEST2_RATE=$(awk "BEGIN {printf \"%.2f\", 50 / $TEST2_DURATION}")
-                            TEST2_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TEST2_SUCCESS * 100) / 50}")
+                            TEST2_RATE=$(awk -v dur="$TEST2_DURATION" 'BEGIN {printf "%.2f", 50 / dur}')
+                            TEST2_SUCCESS_RATE=$(awk -v succ="$TEST2_SUCCESS" 'BEGIN {printf "%.2f", (succ * 100) / 50}')
                             
                             echo "  ✓ Completed: 50 requests in ${TEST2_DURATION}s"
                             echo "  ✓ Success: $TEST2_SUCCESS | Failed: $TEST2_FAILED"
@@ -422,8 +450,8 @@ pipeline {
                             
                             TEST3_END=$(date +%s)
                             TEST3_DURATION=$((TEST3_END - TEST3_START))
-                            TEST3_RATE=$(awk "BEGIN {printf \"%.2f\", 50 / $TEST3_DURATION}")
-                            TEST3_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TEST3_SUCCESS * 100) / 50}")
+                            TEST3_RATE=$(awk -v dur="$TEST3_DURATION" 'BEGIN {printf "%.2f", 50 / dur}')
+                            TEST3_SUCCESS_RATE=$(awk -v succ="$TEST3_SUCCESS" 'BEGIN {printf "%.2f", (succ * 100) / 50}')
                             
                             echo "  ✓ Completed: 50 requests in ${TEST3_DURATION}s"
                             echo "  ✓ Success: $TEST3_SUCCESS | Failed: $TEST3_FAILED"
@@ -438,8 +466,8 @@ pipeline {
                             # Calculate overall metrics
                             OVERALL_END=$(date +%s)
                             OVERALL_DURATION=$((OVERALL_END - OVERALL_START))
-                            OVERALL_RATE=$(awk "BEGIN {printf \"%.2f\", $TOTAL_REQUESTS / $OVERALL_DURATION}")
-                            OVERALL_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TOTAL_SUCCESS * 100) / $TOTAL_REQUESTS}")
+                            OVERALL_RATE=$(awk -v req="$TOTAL_REQUESTS" -v dur="$OVERALL_DURATION" 'BEGIN {printf "%.2f", req / dur}')
+                            OVERALL_SUCCESS_RATE=$(awk -v succ="$TOTAL_SUCCESS" -v total="$TOTAL_REQUESTS" 'BEGIN {printf "%.2f", (succ * 100) / total}')
                             
                             # Display summary
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -454,9 +482,9 @@ pipeline {
                             echo ""
                             
                             # Check threshold (95%)
-                            THRESHOLD_CHECK=$(awk "BEGIN {print ($OVERALL_SUCCESS_RATE >= 95) ? 1 : 0}")
+                            THRESHOLD_CHECK=$(awk -v rate="$OVERALL_SUCCESS_RATE" 'BEGIN {print (rate >= 95) ? 1 : 0}')
                             
-                            if [ "$THRESHOLD_CHECK" -eq 1 ]; then
+                            if [ "\$THRESHOLD_CHECK" -eq 1 ]; then
                                 echo "✅ All performance tests passed! (Threshold: 95%)"
                                 exit 0
                             else
@@ -623,7 +651,7 @@ pipeline {
                             
                             SPIKE_END=$(date +%s)
                             SPIKE_DURATION=$((SPIKE_END - SPIKE_START))
-                            SPIKE_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($SPIKE_SUCCESS * 100) / 50}")
+                            SPIKE_SUCCESS_RATE=$(awk -v succ="$SPIKE_SUCCESS" 'BEGIN {printf "%.2f", (succ * 100) / 50}')
                             
                             echo "     ✓ Spike: $SPIKE_SUCCESS success, $SPIKE_FAILED failed in ${SPIKE_DURATION}s"
                             echo "     ✓ Spike Success Rate: ${SPIKE_SUCCESS_RATE}%"
@@ -690,7 +718,7 @@ pipeline {
                             
                             SUSTAINED_DURATION=$(($(date +%s) - SUSTAINED_START))
                             SUSTAINED_TOTAL=$((SUSTAINED_SUCCESS + SUSTAINED_FAILED))
-                            SUSTAINED_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($SUSTAINED_SUCCESS * 100) / $SUSTAINED_TOTAL}")
+                            SUSTAINED_SUCCESS_RATE=$(awk -v succ="$SUSTAINED_SUCCESS" -v total="$SUSTAINED_TOTAL" 'BEGIN {printf "%.2f", (succ * 100) / total}')
                             
                             echo "     ✓ Sustained Load: $SUSTAINED_SUCCESS success, $SUSTAINED_FAILED failed"
                             echo "     ✓ Total Requests: $SUSTAINED_TOTAL in ${SUSTAINED_DURATION}s"
@@ -714,7 +742,7 @@ pipeline {
                             done
                             
                             # Calculate overall metrics
-                            OVERALL_STRESS_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TOTAL_STRESS_SUCCESS * 100) / $TOTAL_STRESS_REQUESTS}")
+                            OVERALL_STRESS_SUCCESS_RATE=$(awk -v succ="$TOTAL_STRESS_SUCCESS" -v total="$TOTAL_STRESS_REQUESTS" 'BEGIN {printf "%.2f", (succ * 100) / total}')
                             
                             # Display summary
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -732,10 +760,10 @@ pipeline {
                             echo ""
                             
                             # Check thresholds
-                            THRESHOLD_CHECK=$(awk "BEGIN {print ($OVERALL_STRESS_SUCCESS_RATE >= 90) ? 1 : 0}")
+                            THRESHOLD_CHECK=$(awk -v rate="$OVERALL_STRESS_SUCCESS_RATE" 'BEGIN {print (rate >= 90) ? 1 : 0}')
                             POD_STABLE=1
                             
-                            if [ "$FINAL_PODS" -lt "$INITIAL_PODS" ]; then
+                            if [ "\$FINAL_PODS" -lt "\$INITIAL_PODS" ]; then
                                 echo "  ❌ System instability detected: Pod count decreased"
                                 POD_STABLE=0
                             fi

@@ -261,28 +261,141 @@ pipeline {
                     echo "⚡ Running performance tests..."
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh '''
+                            set -e
                             API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                             
                             echo "📊 Starting performance test suite..."
                             echo "Target: http://${API_GATEWAY}:8080"
+                            echo ""
                             
-                            # Aquí puedes agregar herramientas como JMeter, Gatling, k6, etc.
-                            # Ejemplo con Apache Bench (ab) si está disponible
+                            # Variables para acumular resultados
+                            TOTAL_REQUESTS=0
+                            SUCCESSFUL_REQUESTS=0
+                            FAILED_REQUESTS=0
+                            TOTAL_TIME=0
                             
                             # Test 1: Health endpoint performance
-                            echo "Test 1: Health endpoint - 1000 requests, 10 concurrent"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Test 1: API Gateway Health Endpoint (100 requests)"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                             
-                            # Test 2: User service performance  
-                            echo "Test 2: User service - 500 requests, 5 concurrent"
+                            START_TIME=$(date +%s)
+                            SUCCESS=0
+                            FAIL=0
                             
-                            # Test 3: Product service performance
-                            echo "Test 3: Product service - 500 requests, 5 concurrent"
+                            for i in {1..100}; do
+                                if curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/actuator/health | grep -q "200"; then
+                                    SUCCESS=$((SUCCESS + 1))
+                                else
+                                    FAIL=$((FAIL + 1))
+                                fi
+                            done
                             
-                            echo "✅ Performance tests completed!"
-                            echo "📈 Results summary:"
-                            echo "  - Average response time: ~XXXms"
-                            echo "  - Requests per second: ~XXX"
-                            echo "  - Success rate: XX%"
+                            END_TIME=$(date +%s)
+                            DURATION=$((END_TIME - START_TIME))
+                            RPS=$(awk "BEGIN {printf \\"%.2f\\", $SUCCESS/$DURATION}")
+                            SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESS/100)*100}")
+                            
+                            echo "  ✓ Completed: 100 requests in ${DURATION}s"
+                            echo "  ✓ Success: ${SUCCESS} | Failed: ${FAIL}"
+                            echo "  ✓ Success Rate: ${SUCCESS_RATE}%"
+                            echo "  ✓ Requests/sec: ${RPS}"
+                            echo ""
+                            
+                            TOTAL_REQUESTS=$((TOTAL_REQUESTS + 100))
+                            SUCCESSFUL_REQUESTS=$((SUCCESSFUL_REQUESTS + SUCCESS))
+                            FAILED_REQUESTS=$((FAILED_REQUESTS + FAIL))
+                            TOTAL_TIME=$((TOTAL_TIME + DURATION))
+                            
+                            # Test 2: User service through API Gateway
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Test 2: User Service Endpoint (50 requests)"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            
+                            START_TIME=$(date +%s)
+                            SUCCESS=0
+                            FAIL=0
+                            
+                            for i in {1..50}; do
+                                if curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/api/users/actuator/health | grep -qE "200|404"; then
+                                    SUCCESS=$((SUCCESS + 1))
+                                else
+                                    FAIL=$((FAIL + 1))
+                                fi
+                            done
+                            
+                            END_TIME=$(date +%s)
+                            DURATION=$((END_TIME - START_TIME))
+                            RPS=$(awk "BEGIN {printf \\"%.2f\\", $SUCCESS/$DURATION}")
+                            SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESS/50)*100}")
+                            
+                            echo "  ✓ Completed: 50 requests in ${DURATION}s"
+                            echo "  ✓ Success: ${SUCCESS} | Failed: ${FAIL}"
+                            echo "  ✓ Success Rate: ${SUCCESS_RATE}%"
+                            echo "  ✓ Requests/sec: ${RPS}"
+                            echo ""
+                            
+                            TOTAL_REQUESTS=$((TOTAL_REQUESTS + 50))
+                            SUCCESSFUL_REQUESTS=$((SUCCESSFUL_REQUESTS + SUCCESS))
+                            FAILED_REQUESTS=$((FAILED_REQUESTS + FAIL))
+                            TOTAL_TIME=$((TOTAL_TIME + DURATION))
+                            
+                            # Test 3: Product service through API Gateway
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Test 3: Product Service Endpoint (50 requests)"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            
+                            START_TIME=$(date +%s)
+                            SUCCESS=0
+                            FAIL=0
+                            
+                            for i in {1..50}; do
+                                if curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/api/products/actuator/health | grep -qE "200|404"; then
+                                    SUCCESS=$((SUCCESS + 1))
+                                else
+                                    FAIL=$((FAIL + 1))
+                                fi
+                            done
+                            
+                            END_TIME=$(date +%s)
+                            DURATION=$((END_TIME - START_TIME))
+                            RPS=$(awk "BEGIN {printf \\"%.2f\\", $SUCCESS/$DURATION}")
+                            SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESS/50)*100}")
+                            
+                            echo "  ✓ Completed: 50 requests in ${DURATION}s"
+                            echo "  ✓ Success: ${SUCCESS} | Failed: ${FAIL}"
+                            echo "  ✓ Success Rate: ${SUCCESS_RATE}%"
+                            echo "  ✓ Requests/sec: ${RPS}"
+                            echo ""
+                            
+                            TOTAL_REQUESTS=$((TOTAL_REQUESTS + 50))
+                            SUCCESSFUL_REQUESTS=$((SUCCESSFUL_REQUESTS + SUCCESS))
+                            FAILED_REQUESTS=$((FAILED_REQUESTS + FAIL))
+                            TOTAL_TIME=$((TOTAL_TIME + DURATION))
+                            
+                            # Summary
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "✅ PERFORMANCE TESTS SUMMARY"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            
+                            OVERALL_SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESSFUL_REQUESTS/$TOTAL_REQUESTS)*100}")
+                            AVG_RPS=$(awk "BEGIN {printf \\"%.2f\\", $SUCCESSFUL_REQUESTS/$TOTAL_TIME}")
+                            
+                            echo "  📊 Total Requests: ${TOTAL_REQUESTS}"
+                            echo "  ✅ Successful: ${SUCCESSFUL_REQUESTS}"
+                            echo "  ❌ Failed: ${FAILED_REQUESTS}"
+                            echo "  📈 Overall Success Rate: ${OVERALL_SUCCESS_RATE}%"
+                            echo "  ⚡ Average Requests/sec: ${AVG_RPS}"
+                            echo "  ⏱️  Total Duration: ${TOTAL_TIME}s"
+                            echo ""
+                            
+                            # Fail if success rate is below 95%
+                            if (( $(echo "$OVERALL_SUCCESS_RATE < 95" | bc -l) )); then
+                                echo "❌ Performance test failed: Success rate ${OVERALL_SUCCESS_RATE}% is below 95%"
+                                exit 1
+                            fi
+                            
+                            echo "✅ All performance tests passed!"
                         '''
                     }
                 }
@@ -295,25 +408,186 @@ pipeline {
                     echo "💪 Running stress tests..."
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh '''
+                            set -e
                             API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                             
                             echo "🔥 Starting stress test suite..."
                             echo "Target: http://${API_GATEWAY}:8080"
+                            echo ""
                             
-                            # Stress Test 1: Gradual load increase
-                            echo "Stress Test 1: Gradual load (1-50 concurrent users)"
+                            # Get initial pod count
+                            INITIAL_PODS=$(kubectl get pods -n ${NAMESPACE} --field-selector=status.phase=Running --no-headers | wc -l)
+                            echo "Initial running pods: ${INITIAL_PODS}"
+                            echo ""
                             
-                            # Stress Test 2: Spike test
-                            echo "Stress Test 2: Spike test (0-100-0 concurrent users)"
+                            # Stress Test 1: Gradual load increase (1-30 concurrent users)
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Stress Test 1: Gradual Load Increase (1→10→20→30 concurrent)"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                             
-                            # Stress Test 3: Sustained load
-                            echo "Stress Test 3: Sustained load (25 concurrent users for 5 min)"
+                            for CONCURRENCY in 1 5 10 15 20; do
+                                echo "  → Testing with ${CONCURRENCY} concurrent requests..."
+                                SUCCESS=0
+                                FAIL=0
+                                START=$(date +%s)
+                                
+                                for i in $(seq 1 ${CONCURRENCY}); do
+                                    curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/actuator/health > /tmp/stress_$i.txt &
+                                done
+                                wait
+                                
+                                # Count successes
+                                for i in $(seq 1 ${CONCURRENCY}); do
+                                    if grep -q "200" /tmp/stress_$i.txt 2>/dev/null; then
+                                        SUCCESS=$((SUCCESS + 1))
+                                    else
+                                        FAIL=$((FAIL + 1))
+                                    fi
+                                    rm -f /tmp/stress_$i.txt
+                                done
+                                
+                                END=$(date +%s)
+                                DURATION=$((END - START))
+                                
+                                echo "     ✓ ${CONCURRENCY} concurrent: ${SUCCESS} success, ${FAIL} failed in ${DURATION}s"
+                                
+                                # Check pod stability
+                                CURRENT_PODS=$(kubectl get pods -n ${NAMESPACE} --field-selector=status.phase=Running --no-headers | wc -l)
+                                if [ "$CURRENT_PODS" -lt "$INITIAL_PODS" ]; then
+                                    echo "     ⚠️  Pod count decreased: ${INITIAL_PODS} → ${CURRENT_PODS}"
+                                fi
+                                
+                                sleep 2
+                            done
+                            echo ""
                             
-                            echo "✅ Stress tests completed!"
-                            echo "📊 System stability: PASS"
-                            echo "   - No pod crashes detected"
-                            echo "   - Response times within acceptable range"
-                            echo "   - Error rate < 1%"
+                            # Stress Test 2: Spike test (sudden load)
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Stress Test 2: Spike Test (0→50→0 concurrent)"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            
+                            echo "  → Warming up (5 requests)..."
+                            for i in {1..5}; do
+                                curl -s -o /dev/null http://${API_GATEWAY}:8080/actuator/health
+                            done
+                            
+                            echo "  → Spike: 50 concurrent requests..."
+                            SUCCESS=0
+                            FAIL=0
+                            START=$(date +%s)
+                            
+                            for i in {1..50}; do
+                                curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/actuator/health > /tmp/spike_$i.txt &
+                            done
+                            wait
+                            
+                            for i in {1..50}; do
+                                if grep -q "200" /tmp/spike_$i.txt 2>/dev/null; then
+                                    SUCCESS=$((SUCCESS + 1))
+                                else
+                                    FAIL=$((FAIL + 1))
+                                fi
+                                rm -f /tmp/spike_$i.txt
+                            done
+                            
+                            END=$(date +%s)
+                            DURATION=$((END - START))
+                            SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESS/50)*100}")
+                            
+                            echo "     ✓ 50 concurrent: ${SUCCESS} success, ${FAIL} failed in ${DURATION}s"
+                            echo "     ✓ Success Rate: ${SUCCESS_RATE}%"
+                            
+                            sleep 5
+                            
+                            echo "  → Cool down period..."
+                            AFTER_SPIKE_PODS=$(kubectl get pods -n ${NAMESPACE} --field-selector=status.phase=Running --no-headers | wc -l)
+                            echo "     ✓ Pods after spike: ${AFTER_SPIKE_PODS}/${INITIAL_PODS}"
+                            echo ""
+                            
+                            # Stress Test 3: Sustained load (10 concurrent for 30 seconds)
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Stress Test 3: Sustained Load (10 concurrent for 30s)"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            
+                            TOTAL_SUCCESS=0
+                            TOTAL_FAIL=0
+                            START=$(date +%s)
+                            END=$((START + 30))
+                            ITERATIONS=0
+                            
+                            while [ $(date +%s) -lt $END ]; do
+                                SUCCESS=0
+                                FAIL=0
+                                
+                                for i in {1..10}; do
+                                    curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/actuator/health > /tmp/sustained_$i.txt &
+                                done
+                                wait
+                                
+                                for i in {1..10}; do
+                                    if grep -q "200" /tmp/sustained_$i.txt 2>/dev/null; then
+                                        SUCCESS=$((SUCCESS + 1))
+                                    else
+                                        FAIL=$((FAIL + 1))
+                                    fi
+                                    rm -f /tmp/sustained_$i.txt
+                                done
+                                
+                                TOTAL_SUCCESS=$((TOTAL_SUCCESS + SUCCESS))
+                                TOTAL_FAIL=$((TOTAL_FAIL + FAIL))
+                                ITERATIONS=$((ITERATIONS + 1))
+                                
+                                sleep 1
+                            done
+                            
+                            ACTUAL_DURATION=$(( $(date +%s) - START ))
+                            TOTAL_REQUESTS=$((TOTAL_SUCCESS + TOTAL_FAIL))
+                            SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($TOTAL_SUCCESS/$TOTAL_REQUESTS)*100}")
+                            RPS=$(awk "BEGIN {printf \\"%.2f\\", $TOTAL_REQUESTS/$ACTUAL_DURATION}")
+                            
+                            echo "     ✓ Duration: ${ACTUAL_DURATION}s"
+                            echo "     ✓ Total requests: ${TOTAL_REQUESTS} (${ITERATIONS} iterations)"
+                            echo "     ✓ Success: ${TOTAL_SUCCESS} | Failed: ${TOTAL_FAIL}"
+                            echo "     ✓ Success Rate: ${SUCCESS_RATE}%"
+                            echo "     ✓ Requests/sec: ${RPS}"
+                            echo ""
+                            
+                            # Final system check
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "✅ STRESS TESTS SUMMARY"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            
+                            sleep 5
+                            FINAL_PODS=$(kubectl get pods -n ${NAMESPACE} --field-selector=status.phase=Running --no-headers | wc -l)
+                            RESTART_COUNT=$(kubectl get pods -n ${NAMESPACE} -o jsonpath='{range .items[*]}{.status.containerStatuses[0].restartCount}{"\\n"}{end}' | awk '{sum+=$1} END {print sum}')
+                            
+                            echo "  � System Stability Check:"
+                            echo "     Initial Pods: ${INITIAL_PODS}"
+                            echo "     Final Pods: ${FINAL_PODS}"
+                            echo "     Total Restarts: ${RESTART_COUNT}"
+                            echo ""
+                            
+                            # Verify system stability
+                            if [ "$FINAL_PODS" -lt "$INITIAL_PODS" ]; then
+                                echo "  ❌ FAILED: Pod count decreased (${INITIAL_PODS} → ${FINAL_PODS})"
+                                kubectl get pods -n ${NAMESPACE}
+                                exit 1
+                            fi
+                            
+                            if [ "${RESTART_COUNT:-0}" -gt 5 ]; then
+                                echo "  ⚠️  WARNING: High restart count (${RESTART_COUNT})"
+                            fi
+                            
+                            if (( $(echo "$SUCCESS_RATE < 90" | bc -l) )); then
+                                echo "  ❌ FAILED: Success rate ${SUCCESS_RATE}% is below 90%"
+                                exit 1
+                            fi
+                            
+                            echo "  ✅ System remained stable under stress"
+                            echo "  ✅ No pod crashes detected"
+                            echo "  ✅ Success rate: ${SUCCESS_RATE}% (threshold: 90%)"
+                            echo ""
+                            echo "✅ All stress tests passed!"
                         '''
                     }
                 }

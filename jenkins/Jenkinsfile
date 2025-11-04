@@ -10,6 +10,7 @@ pipeline {
     
     environment {
         DOCKER_REGISTRY = 'alejocastro'
+        DOCKER_USERNAME = 'alejocastro'
         VERSION = "${BUILD_NUMBER}"
         NAMESPACE = 'ecommerce-stage'
         // Infrastructure services must be deployed first

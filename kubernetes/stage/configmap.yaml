@@ -3,8 +3,6 @@ kind: ConfigMap
 metadata:
   name: microservices-config
   namespace: ecommerce-stage
-  labels:
-    environment: staging
 data:
   SPRING_PROFILES_ACTIVE: "stage"
   SPRING_ZIPKIN_BASE_URL: "http://zipkin:9411"

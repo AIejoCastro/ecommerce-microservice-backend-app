@@ -5,9 +5,8 @@ metadata:
   namespace: ecommerce-stage
   labels:
     app: order-service
-    environment: staging
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: order-service
@@ -15,7 +14,6 @@ spec:
     metadata:
       labels:
         app: order-service
-        environment: staging
     spec:
       containers:
         - name: order-service
@@ -28,23 +26,26 @@ spec:
                 name: microservices-config
           readinessProbe:
             httpGet:
-              path: /actuator/health
+              path: /order-service/actuator/health
               port: 8300
-            initialDelaySeconds: 20
-            periodSeconds: 15
+            initialDelaySeconds: 150
+            periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /actuator/health
+              path: /order-service/actuator/health
               port: 8300
-            initialDelaySeconds: 40
+            initialDelaySeconds: 180
             periodSeconds: 30
+            failureThreshold: 3
           resources:
             requests:
-              cpu: 200m
+              cpu: 150m
               memory: 256Mi
             limits:
-              cpu: 400m
+              cpu: 300m
               memory: 512Mi
+      restartPolicy: Always
 ---
 apiVersion: v1
 kind: Service
@@ -53,7 +54,6 @@ metadata:
   namespace: ecommerce-stage
   labels:
     app: order-service
-    environment: staging
 spec:
   type: ClusterIP
   selector:

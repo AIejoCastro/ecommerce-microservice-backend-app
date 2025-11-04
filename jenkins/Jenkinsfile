@@ -1,4 +1,3 @@
-// jenkins/Jenkinsfile-stage
 pipeline {
     agent any
     
@@ -198,144 +197,45 @@ pipeline {
                 script {
                     echo "Deploying to Kubernetes ${NAMESPACE}..."
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
-                        sh 'kubectl config current-context || echo "Context check failed, continuing anyway..."'
+                        sh 'kubectl config current-context'
 
-                        // Verificar conectividad básica (sin fallar el pipeline)
-                        echo "Verifying cluster connectivity..."
-                        sh '''
-                            kubectl version --client --short || echo "kubectl client version check"
-                            kubectl cluster-info --request-timeout=5s || echo "⚠️ Cluster info not available, proceeding with deployment..."
-                        '''
+                        // Crear namespace si no existe
+                        sh "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply --validate=false -f -"
                         
-                        // Crear namespace si no existe (más tolerante a fallos)
-                        echo "Creating namespace ${NAMESPACE}..."
-                        sh """
-                            set +e
-                            kubectl get namespace ${NAMESPACE} --request-timeout=10s >/dev/null 2>&1
-                            if [ \$? -ne 0 ]; then
-                                echo "Namespace doesn't exist, creating..."
-                                kubectl create namespace ${NAMESPACE} --request-timeout=30s || \
-                                kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply --validate=false -f - --request-timeout=30s
-                            else
-                                echo "Namespace ${NAMESPACE} already exists"
-                            fi
-                            set -e
-                        """
-                        
-                        // Aplicar ConfigMaps (más tolerante)
-                        echo "Applying ConfigMaps..."
-                        sh """
-                            set +e
-                            for i in 1 2 3; do
-                                echo "Attempt \$i to apply ConfigMaps..."
-                                kubectl apply --validate=false -f kubernetes/stage/configmap.yaml --request-timeout=30s
-                                if [ \$? -eq 0 ]; then
-                                    echo "✓ ConfigMaps applied successfully"
-                                    break
-                                else
-                                    echo "⚠️ Attempt \$i failed, waiting 5 seconds..."
-                                    sleep 5
-                                fi
-                            done
-                            set -e
-                        """
-                        
-                        // Deploy infrastructure services first (CRITICAL - must be ready)
+                        // Aplicar ConfigMaps
+                        sh "kubectl apply --validate=false -f kubernetes/stage/configmap.yaml"
+
+                        // Deploy infrastructure services first
                         echo "Deploying infrastructure services..."
                         def infraServices = env.INFRA_SERVICES.split(',')
                         infraServices.each { service ->
-                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                            echo "Deploying ${service}..."
-                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                            
-                            // First, delete old failed pods to start fresh
                             sh """
-                                kubectl delete pods -n ${NAMESPACE} -l app=${service} --field-selector=status.phase=Failed --ignore-not-found=true --request-timeout=30s || true
-                            """
-                            
-                            // Apply deployment (don't use set image for infrastructure)
-                            sh """
-                                kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml --request-timeout=60s
-                            """
-                            
-                            // Wait for deployment to be ready with proper timeout
-                            sh """
-                                echo "Waiting for ${service} to be ready (this may take several minutes)..."
+                                kubectl set image deployment/${service} \
+                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
+                                    -n ${NAMESPACE} || \
+                                kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml
                                 
-                                # Wait up to 10 minutes for the deployment to be ready
-                                kubectl wait --for=condition=available --timeout=10m deployment/${service} -n ${NAMESPACE} || {
-                                    echo "❌ ${service} failed to become ready"
-                                    echo "Pod status:"
-                                    kubectl get pods -n ${NAMESPACE} -l app=${service}
-                                    echo "Recent logs:"
-                                    kubectl logs -n ${NAMESPACE} -l app=${service} --tail=50 --all-containers=true || true
-                                    exit 1
-                                }
-                                
-                                echo "✅ ${service} is ready"
+                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=6m
                             """
                         }
                         
-                        // Infrastructure is ready, give extra time for service registration
-                        echo "Infrastructure services are ready. Waiting for service mesh to stabilize..."
-                        sh """
-                            sleep 30
-                            echo "✅ Infrastructure services status:"
-                            kubectl get pods -n ${NAMESPACE} -l 'app in (cloud-config,service-discovery)'
-                        """
+                        // Wait a bit for services to be fully ready
+                        echo "Waiting for infrastructure services to stabilize..."
+                        sh "sleep 15"
                         
-                        // Deploy application services (depends on infrastructure)
+                        // Deploy application services
                         echo "Deploying application services..."
                         def appServices = env.APP_SERVICES.split(',')
                         appServices.each { service ->
-                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                            echo "Deploying ${service}..."
-                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                            
-                            // Delete old failed pods
                             sh """
-                                kubectl delete pods -n ${NAMESPACE} -l app=${service} --field-selector=status.phase=Failed --ignore-not-found=true --request-timeout=30s || true
-                            """
-                            
-                            // Apply deployment
-                            sh """
-                                kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml --request-timeout=60s
-                            """
-                            
-                            // Wait for deployment to be ready
-                            sh """
-                                echo "Waiting for ${service} to be ready (this may take several minutes)..."
+                                kubectl set image deployment/${service} \
+                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
+                                    -n ${NAMESPACE} || \
+                                kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml
                                 
-                                # Wait up to 10 minutes for the deployment to be ready
-                                kubectl wait --for=condition=available --timeout=10m deployment/${service} -n ${NAMESPACE} || {
-                                    echo "❌ ${service} failed to become ready"
-                                    echo "Pod status:"
-                                    kubectl get pods -n ${NAMESPACE} -l app=${service}
-                                    echo "Recent logs:"
-                                    kubectl logs -n ${NAMESPACE} -l app=${service} --tail=50 --all-containers=true || true
-                                    exit 1
-                                }
-                                
-                                echo "✅ ${service} is ready"
+                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=8m
                             """
                         }
-                        
-                        // Verify all services are healthy
-                        sh """
-                            echo ""
-                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                            echo "✅ All services deployed successfully!"
-                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                            echo ""
-                            echo "Deployments:"
-                            kubectl get deployments -n ${NAMESPACE}
-                            echo ""
-                            echo "Pods:"
-                            kubectl get pods -n ${NAMESPACE}
-                            echo ""
-                            echo "Services:"
-                            kubectl get svc -n ${NAMESPACE}
-                        """
                     }
                 }
             }
@@ -347,32 +247,12 @@ pipeline {
                     echo "🔬 Running End-to-End tests..."
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh '''
-                            set +e
                             # Wait for all services to be fully ready
                             echo "Waiting for all services to stabilize..."
                             sleep 45
                             
-                            # Get service URLs with retry
-                            echo "Retrieving API Gateway service IP..."
-                            API_GATEWAY=""
-                            for i in 1 2 3 4 5; do
-                                API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}' --request-timeout=20s 2>/dev/null)
-                                if [ -n "$API_GATEWAY" ] && [ "$API_GATEWAY" != "" ]; then
-                                    echo "✓ API Gateway IP retrieved: $API_GATEWAY"
-                                    break
-                                fi
-                                echo "Attempt $i failed, retrying in 8 seconds..."
-                                sleep 8
-                            done
-                            
-                            if [ -z "$API_GATEWAY" ] || [ "$API_GATEWAY" = "" ]; then
-                                echo "❌ Failed to retrieve API Gateway IP after 5 attempts"
-                                echo "Attempting to get service information..."
-                                kubectl get svc -n ${NAMESPACE} || true
-                                kubectl get pods -n ${NAMESPACE} || true
-                                exit 1
-                            fi
-                            set -e
+                            # Get service URLs
+                            API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                             
                             echo "Running E2E tests against deployed services..."
                             echo "API Gateway URL: http://${API_GATEWAY}:8080"
@@ -386,23 +266,9 @@ pipeline {
                         servicesWithE2E.each { service ->
                             dir(service) {
                                 sh """
-                                    set +e
-                                    # Set environment variables for E2E tests with retry
-                                    for i in 1 2 3; do
-                                        API_GATEWAY_URL=\$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}' --request-timeout=20s 2>/dev/null)
-                                        SERVICE_URL=\$(kubectl get svc ${service} -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}' --request-timeout=20s 2>/dev/null)
-                                        
-                                        if [ -n "\$API_GATEWAY_URL" ] && [ -n "\$SERVICE_URL" ]; then
-                                            echo "✓ Service URLs retrieved successfully"
-                                            break
-                                        fi
-                                        echo "Retry \$i: Waiting for service URLs..."
-                                        sleep 5
-                                    done
-                                    
-                                    export API_GATEWAY_URL
-                                    export SERVICE_URL
-                                    set -e
+                                    # Set environment variables for E2E tests
+                                    export API_GATEWAY_URL=\$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                                    export SERVICE_URL=\$(kubectl get svc ${service} -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                                     
                                     # Run E2E tests
                                     ./mvnw test -Dtest=*E2E* || echo "⚠️ E2E tests for ${service} had issues"
@@ -417,6 +283,7 @@ pipeline {
                 }
             }
         }
+    }
         
         stage('Performance Tests') {
             steps {

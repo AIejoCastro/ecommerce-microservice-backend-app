@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: payment-service
-          image: selimhorri/payment-service-ecommerce-boot:stage-latest
+          image: alejocastro/payment-service-ecommerce-boot:stage-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8400

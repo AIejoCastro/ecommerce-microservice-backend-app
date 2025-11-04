@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: order-service
-          image: selimhorri/order-service-ecommerce-boot:stage-latest
+          image: alejocastro/order-service-ecommerce-boot:stage-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8300

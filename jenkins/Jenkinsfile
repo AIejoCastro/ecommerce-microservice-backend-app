@@ -350,8 +350,8 @@ pipeline {
                             
                             TEST1_END=$(date +%s)
                             TEST1_DURATION=$((TEST1_END - TEST1_START))
-                            TEST1_RATE=$(echo "scale=2; 100 / $TEST1_DURATION" | bc)
-                            TEST1_SUCCESS_RATE=$(echo "scale=2; ($TEST1_SUCCESS * 100) / 100" | bc)
+                            TEST1_RATE=$(awk "BEGIN {printf \"%.2f\", 100 / $TEST1_DURATION}")
+                            TEST1_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TEST1_SUCCESS * 100) / 100}")
                             
                             echo "  ✓ Completed: 100 requests in ${TEST1_DURATION}s"
                             echo "  ✓ Success: $TEST1_SUCCESS | Failed: $TEST1_FAILED"
@@ -386,8 +386,8 @@ pipeline {
                             
                             TEST2_END=$(date +%s)
                             TEST2_DURATION=$((TEST2_END - TEST2_START))
-                            TEST2_RATE=$(echo "scale=2; 50 / $TEST2_DURATION" | bc)
-                            TEST2_SUCCESS_RATE=$(echo "scale=2; ($TEST2_SUCCESS * 100) / 50" | bc)
+                            TEST2_RATE=$(awk "BEGIN {printf \"%.2f\", 50 / $TEST2_DURATION}")
+                            TEST2_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TEST2_SUCCESS * 100) / 50}")
                             
                             echo "  ✓ Completed: 50 requests in ${TEST2_DURATION}s"
                             echo "  ✓ Success: $TEST2_SUCCESS | Failed: $TEST2_FAILED"
@@ -422,8 +422,8 @@ pipeline {
                             
                             TEST3_END=$(date +%s)
                             TEST3_DURATION=$((TEST3_END - TEST3_START))
-                            TEST3_RATE=$(echo "scale=2; 50 / $TEST3_DURATION" | bc)
-                            TEST3_SUCCESS_RATE=$(echo "scale=2; ($TEST3_SUCCESS * 100) / 50" | bc)
+                            TEST3_RATE=$(awk "BEGIN {printf \"%.2f\", 50 / $TEST3_DURATION}")
+                            TEST3_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TEST3_SUCCESS * 100) / 50}")
                             
                             echo "  ✓ Completed: 50 requests in ${TEST3_DURATION}s"
                             echo "  ✓ Success: $TEST3_SUCCESS | Failed: $TEST3_FAILED"
@@ -438,8 +438,8 @@ pipeline {
                             # Calculate overall metrics
                             OVERALL_END=$(date +%s)
                             OVERALL_DURATION=$((OVERALL_END - OVERALL_START))
-                            OVERALL_RATE=$(echo "scale=2; $TOTAL_REQUESTS / $OVERALL_DURATION" | bc)
-                            OVERALL_SUCCESS_RATE=$(echo "scale=2; ($TOTAL_SUCCESS * 100) / $TOTAL_REQUESTS" | bc)
+                            OVERALL_RATE=$(awk "BEGIN {printf \"%.2f\", $TOTAL_REQUESTS / $OVERALL_DURATION}")
+                            OVERALL_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TOTAL_SUCCESS * 100) / $TOTAL_REQUESTS}")
                             
                             # Display summary
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -454,7 +454,7 @@ pipeline {
                             echo ""
                             
                             # Check threshold (95%)
-                            THRESHOLD_CHECK=$(echo "$OVERALL_SUCCESS_RATE >= 95" | bc -l)
+                            THRESHOLD_CHECK=$(awk "BEGIN {print ($OVERALL_SUCCESS_RATE >= 95) ? 1 : 0}")
                             
                             if [ "$THRESHOLD_CHECK" -eq 1 ]; then
                                 echo "✅ All performance tests passed! (Threshold: 95%)"
@@ -623,7 +623,7 @@ pipeline {
                             
                             SPIKE_END=$(date +%s)
                             SPIKE_DURATION=$((SPIKE_END - SPIKE_START))
-                            SPIKE_SUCCESS_RATE=$(echo "scale=2; ($SPIKE_SUCCESS * 100) / 50" | bc)
+                            SPIKE_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($SPIKE_SUCCESS * 100) / 50}")
                             
                             echo "     ✓ Spike: $SPIKE_SUCCESS success, $SPIKE_FAILED failed in ${SPIKE_DURATION}s"
                             echo "     ✓ Spike Success Rate: ${SPIKE_SUCCESS_RATE}%"
@@ -690,7 +690,7 @@ pipeline {
                             
                             SUSTAINED_DURATION=$(($(date +%s) - SUSTAINED_START))
                             SUSTAINED_TOTAL=$((SUSTAINED_SUCCESS + SUSTAINED_FAILED))
-                            SUSTAINED_SUCCESS_RATE=$(echo "scale=2; ($SUSTAINED_SUCCESS * 100) / $SUSTAINED_TOTAL" | bc)
+                            SUSTAINED_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($SUSTAINED_SUCCESS * 100) / $SUSTAINED_TOTAL}")
                             
                             echo "     ✓ Sustained Load: $SUSTAINED_SUCCESS success, $SUSTAINED_FAILED failed"
                             echo "     ✓ Total Requests: $SUSTAINED_TOTAL in ${SUSTAINED_DURATION}s"
@@ -714,7 +714,7 @@ pipeline {
                             done
                             
                             # Calculate overall metrics
-                            OVERALL_STRESS_SUCCESS_RATE=$(echo "scale=2; ($TOTAL_STRESS_SUCCESS * 100) / $TOTAL_STRESS_REQUESTS" | bc)
+                            OVERALL_STRESS_SUCCESS_RATE=$(awk "BEGIN {printf \"%.2f\", ($TOTAL_STRESS_SUCCESS * 100) / $TOTAL_STRESS_REQUESTS}")
                             
                             # Display summary
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -732,7 +732,7 @@ pipeline {
                             echo ""
                             
                             # Check thresholds
-                            THRESHOLD_CHECK=$(echo "$OVERALL_STRESS_SUCCESS_RATE >= 90" | bc -l)
+                            THRESHOLD_CHECK=$(awk "BEGIN {print ($OVERALL_STRESS_SUCCESS_RATE >= 90) ? 1 : 0}")
                             POD_STABLE=1
                             
                             if [ "$FINAL_PODS" -lt "$INITIAL_PODS" ]; then

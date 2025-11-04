@@ -199,10 +199,15 @@ pipeline {
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh 'kubectl config current-context'
 
-                        // Crear namespace y aplicar recursos
+                        // Configurar timeouts más largos para kubectl
+                        sh """
+                            export KUBECTL_TIMEOUT=300
+                        """
+                        
+                        // Crear namespace y aplicar recursos (sin validación para evitar timeout)
                         sh """
                             kubectl create namespace ${NAMESPACE} 2>/dev/null || true
-                            kubectl apply -f kubernetes/stage/configmap.yaml
+                            kubectl apply -f kubernetes/stage/configmap.yaml --validate=false --request-timeout=60s
                         """
 
                         // Deploy infrastructure services first with retry logic
@@ -211,7 +216,7 @@ pipeline {
                         infraServices.each { service ->
                             retry(3) {
                                 sh """
-                                    kubectl apply -f kubernetes/stage/${service}-deployment.yaml
+                                    kubectl apply -f kubernetes/stage/${service}-deployment.yaml --validate=false --request-timeout=60s
                                     sleep 5
                                 """
                             }
@@ -227,7 +232,7 @@ pipeline {
                         appServices.each { service ->
                             retry(3) {
                                 sh """
-                                    kubectl apply -f kubernetes/stage/${service}-deployment.yaml
+                                    kubectl apply -f kubernetes/stage/${service}-deployment.yaml --validate=false --request-timeout=60s
                                     sleep 5
                                 """
                             }

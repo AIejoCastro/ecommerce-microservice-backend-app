@@ -1,63 +1,89 @@
 #!/bin/bash
 # Script to generate a proper kubeconfig for stage environment
 
-set -e
+set -euo pipefail
 
-echo "🔧 Generating stage kubeconfig from minikube..."
+TARGET_NAMESPACE=${1:-ecommerce-dev}
+OUTPUT_FILE=${2:-stage-kubeconfig.yaml}
+SOURCE_CONTEXT=${3:-minikube}
+ACCESS_HOST=${MINIKUBE_ACCESS_HOST:-}
 
-# Get the current kubeconfig
-KUBECONFIG_PATH="${HOME}/.kube/config"
+echo "🔧 Generating stage kubeconfig from context '${SOURCE_CONTEXT}' (namespace: ${TARGET_NAMESPACE})..."
 
-# Check if minikube is running
-if ! minikube status > /dev/null 2>&1; then
-    echo "❌ Error: Minikube is not running. Please start minikube first."
-    echo "   Run: minikube start"
+if ! command -v kubectl >/dev/null 2>&1; then
+    echo "❌ Error: kubectl is required but not found in PATH"
     exit 1
 fi
 
-# Get minikube cluster info
-MINIKUBE_IP=$(minikube ip)
-MINIKUBE_PORT=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' | sed 's|https://[^:]*:||')
+if ! command -v minikube >/dev/null 2>&1; then
+    echo "❌ Error: minikube CLI is required but not found in PATH"
+    exit 1
+fi
 
-echo "📋 Minikube IP: ${MINIKUBE_IP}"
-echo "📋 API Server Port: ${MINIKUBE_PORT}"
+if ! minikube status >/dev/null 2>&1; then
+    echo "❌ Error: Minikube is not running. Please start it first (minikube start)."
+    exit 1
+fi
 
-# Create a temporary kubeconfig
-TEMP_CONFIG=$(mktemp)
-kubectl config view --flatten > "${TEMP_CONFIG}"
+# Resolve cluster server information from the selected context
+SERVER_URL=$(kubectl config view --raw -o jsonpath="{.clusters[?(@.name=='${SOURCE_CONTEXT}')].cluster.server}")
 
-# Create stage-specific kubeconfig
-STAGE_CONFIG="stage-kubeconfig.yaml"
+if [[ -z "${SERVER_URL}" ]]; then
+    echo "❌ Error: Could not find a cluster entry for context '${SOURCE_CONTEXT}' in the current kubeconfig."
+    exit 1
+fi
 
-cat > "${STAGE_CONFIG}" <<EOF
+SERVER_HOST=$(echo "${SERVER_URL}" | sed -E 's#https://([^:/]+).*#\1#')
+SERVER_PORT=$(echo "${SERVER_URL}" | sed -E 's#https://[^:/]+:([0-9]+).*#\1#')
+
+if [[ -z "${SERVER_PORT}" ]]; then
+    # Default LoadBalancer/secure port for kube-apiserver
+    SERVER_PORT=8443
+fi
+
+if [[ -z "${ACCESS_HOST}" ]]; then
+    if [[ "${SERVER_HOST}" == "127.0.0.1" || "${SERVER_HOST}" == "localhost" ]]; then
+        ACCESS_HOST=$(minikube ip)
+        echo "ℹ️  Server host is loopback; using Minikube IP ${ACCESS_HOST}"
+    else
+        ACCESS_HOST=${SERVER_HOST}
+    fi
+else
+    echo "ℹ️  Using host override from MINIKUBE_ACCESS_HOST=${ACCESS_HOST}"
+fi
+
+CLUSTER_CA=$(kubectl config view --raw -o jsonpath="{.clusters[?(@.name=='${SOURCE_CONTEXT}')].cluster.certificate-authority-data}")
+CLIENT_CERT=$(kubectl config view --raw -o jsonpath='{.users[0].user.client-certificate-data}')
+CLIENT_KEY=$(kubectl config view --raw -o jsonpath='{.users[0].user.client-key-data}')
+
+cat > "${OUTPUT_FILE}" <<EOF
 apiVersion: v1
 kind: Config
-current-context: minikube-stage
+current-context: ${SOURCE_CONTEXT}-stage
 clusters:
-- name: minikube-stage
+- name: ${SOURCE_CONTEXT}-stage
   cluster:
+    $( [[ -n "${CLUSTER_CA}" ]] && printf "certificate-authority-data: %s\n" "${CLUSTER_CA}" )
     insecure-skip-tls-verify: true
-    server: https://host.docker.internal:${MINIKUBE_PORT}
+    server: https://${ACCESS_HOST}:${SERVER_PORT}
 contexts:
-- name: minikube-stage
+- name: ${SOURCE_CONTEXT}-stage
   context:
-    cluster: minikube-stage
-    user: minikube
-    namespace: ecommerce-stage
+    cluster: ${SOURCE_CONTEXT}-stage
+    namespace: ${TARGET_NAMESPACE}
+    user: ${SOURCE_CONTEXT}-stage-user
 users:
-- name: minikube
+- name: ${SOURCE_CONTEXT}-stage-user
   user:
-    client-certificate-data: $(kubectl config view --raw -o jsonpath='{.users[0].user.client-certificate-data}')
-    client-key-data: $(kubectl config view --raw -o jsonpath='{.users[0].user.client-key-data}')
+    client-certificate-data: ${CLIENT_CERT}
+    client-key-data: ${CLIENT_KEY}
 EOF
 
-# Clean up
-rm -f "${TEMP_CONFIG}"
-
-echo "✅ Stage kubeconfig generated: ${STAGE_CONFIG}"
+echo "✅ Stage kubeconfig written to ${OUTPUT_FILE}"
 echo ""
 echo "📝 Next steps:"
-echo "1. Update the Jenkins credential 'kubeconfig-stage' with the contents of ${STAGE_CONFIG}"
-echo "2. Go to Jenkins → Manage Jenkins → Credentials → kubeconfig-stage"
-echo "3. Update the credential with the new kubeconfig content"
+echo "1. Upload ${OUTPUT_FILE} to Jenkins as/into the credential 'kubeconfig-stage'."
+echo "2. If Jenkins runs inside Docker and cannot reach Minikube IP, rerun with MINIKUBE_ACCESS_HOST=host.docker.internal."
+echo "   Example: MINIKUBE_ACCESS_HOST=host.docker.internal ./scripts/generate-stage-kubeconfig.sh"
+echo "3. Re-run the stage pipeline to verify connectivity."
 

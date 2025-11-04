@@ -198,6 +198,24 @@ pipeline {
                 script {
                     echo "Deploying to Kubernetes ${NAMESPACE}..."
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
+                        // Verify cluster connectivity first
+                        sh """
+                            echo "Verifying cluster connectivity..."
+                            for i in 1 2 3; do
+                                if kubectl cluster-info --request-timeout=30s; then
+                                    echo "✅ Cluster is reachable"
+                                    break
+                                else
+                                    echo "⚠️ Attempt \$i: Cluster connection failed, retrying..."
+                                    sleep 10
+                                    if [ \$i -eq 3 ]; then
+                                        echo "❌ Failed to connect to cluster after 3 attempts"
+                                        exit 1
+                                    fi
+                                fi
+                            done
+                        """
+                        
                         sh 'kubectl config current-context'
 
                         // Create namespace and apply configmap
@@ -219,23 +237,23 @@ pipeline {
                             echo "Deploying cloud-config..."
                             
                             # Apply deployment manifest
-                            kubectl apply -f kubernetes/stage/cloud-config-deployment.yaml --validate=false --request-timeout=30s
+                            kubectl apply -f kubernetes/stage/cloud-config-deployment.yaml --validate=false --request-timeout=60s
                             
                             # Update image
-                            kubectl set image deployment/cloud-config cloud-config=${DOCKER_REGISTRY}/cloud-config-ecommerce-boot:${VERSION} -n ${NAMESPACE} --request-timeout=30s
+                            kubectl set image deployment/cloud-config cloud-config=${DOCKER_REGISTRY}/cloud-config-ecommerce-boot:${VERSION} -n ${NAMESPACE} --request-timeout=60s
                             
                             # Scale down to 0, wait, then scale back up (cleanest restart)
                             echo "Restarting cloud-config deployment..."
-                            kubectl scale deployment/cloud-config --replicas=0 -n ${NAMESPACE} --request-timeout=30s
+                            kubectl scale deployment/cloud-config --replicas=0 -n ${NAMESPACE} --request-timeout=60s
                             sleep 5
-                            kubectl scale deployment/cloud-config --replicas=1 -n ${NAMESPACE} --request-timeout=30s
+                            kubectl scale deployment/cloud-config --replicas=1 -n ${NAMESPACE} --request-timeout=60s
                             
                             # Wait for readiness with extended timeout for health probes (90s initial delay + buffer)
                             echo "Waiting for cloud-config to be ready (this takes ~2 minutes due to health probes)..."
                             if ! kubectl wait --for=condition=available --timeout=200s deployment/cloud-config -n ${NAMESPACE} 2>/dev/null; then
                                 echo "⚠️ Cloud-config deployment timed out, checking status..."
-                                kubectl get pods -l app=cloud-config -n ${NAMESPACE} --request-timeout=20s || true
-                                kubectl describe pods -l app=cloud-config -n ${NAMESPACE} --request-timeout=20s | tail -30 || true
+                                kubectl get pods -l app=cloud-config -n ${NAMESPACE} --request-timeout=30s || true
+                                kubectl describe pods -l app=cloud-config -n ${NAMESPACE} --request-timeout=30s | tail -30 || true
                                 echo "❌ Cloud-config failed to deploy"
                                 exit 1
                             fi
@@ -250,23 +268,23 @@ pipeline {
                             echo "Deploying service-discovery..."
                             
                             # Apply deployment manifest
-                            kubectl apply -f kubernetes/stage/service-discovery-deployment.yaml --validate=false --request-timeout=30s
+                            kubectl apply -f kubernetes/stage/service-discovery-deployment.yaml --validate=false --request-timeout=60s
                             
                             # Update image
-                            kubectl set image deployment/service-discovery service-discovery=${DOCKER_REGISTRY}/service-discovery-ecommerce-boot:${VERSION} -n ${NAMESPACE} --request-timeout=30s
+                            kubectl set image deployment/service-discovery service-discovery=${DOCKER_REGISTRY}/service-discovery-ecommerce-boot:${VERSION} -n ${NAMESPACE} --request-timeout=60s
                             
                             # Scale down to 0, wait, then scale back up
                             echo "Restarting service-discovery deployment..."
-                            kubectl scale deployment/service-discovery --replicas=0 -n ${NAMESPACE} --request-timeout=30s
+                            kubectl scale deployment/service-discovery --replicas=0 -n ${NAMESPACE} --request-timeout=60s
                             sleep 5
-                            kubectl scale deployment/service-discovery --replicas=1 -n ${NAMESPACE} --request-timeout=30s
+                            kubectl scale deployment/service-discovery --replicas=1 -n ${NAMESPACE} --request-timeout=60s
                             
                             # Wait for readiness
                             echo "Waiting for service-discovery to be ready (this takes ~2 minutes due to health probes)..."
                             if ! kubectl wait --for=condition=available --timeout=200s deployment/service-discovery -n ${NAMESPACE} 2>/dev/null; then
                                 echo "⚠️ Service-discovery deployment timed out, checking status..."
-                                kubectl get pods -l app=service-discovery -n ${NAMESPACE} --request-timeout=20s || true
-                                kubectl describe pods -l app=service-discovery -n ${NAMESPACE} --request-timeout=20s | tail -30 || true
+                                kubectl get pods -l app=service-discovery -n ${NAMESPACE} --request-timeout=30s || true
+                                kubectl describe pods -l app=service-discovery -n ${NAMESPACE} --request-timeout=30s | tail -30 || true
                                 echo "❌ Service-discovery failed to deploy"
                                 exit 1
                             fi
@@ -276,7 +294,18 @@ pipeline {
                         
                         // Wait for infrastructure services to stabilize
                         echo "Waiting for infrastructure services to stabilize..."
-                        sh "sleep 15"
+                        sh "sleep 30"
+                        
+                        // Verify infrastructure services are actually ready
+                        sh """
+                            echo "Verifying infrastructure services health..."
+                            kubectl get pods -n ${NAMESPACE} -l app=cloud-config
+                            kubectl get pods -n ${NAMESPACE} -l app=service-discovery
+                            
+                            # Wait for pods to be actually running (not just deployment available)
+                            kubectl wait --for=condition=ready pod -l app=cloud-config -n ${NAMESPACE} --timeout=60s || true
+                            kubectl wait --for=condition=ready pod -l app=service-discovery -n ${NAMESPACE} --timeout=60s || true
+                        """
                         
                         // Deploy application services
                         echo "Deploying application services..."
@@ -297,32 +326,48 @@ pipeline {
                                 echo "Deploying ${service}..."
                                 
                                 # Apply deployment manifest
-                                kubectl apply -f kubernetes/stage/${service}-deployment.yaml --validate=false --request-timeout=30s
+                                kubectl apply -f kubernetes/stage/${service}-deployment.yaml --validate=false --request-timeout=60s
                                 
                                 # Update image
-                                kubectl set image deployment/${service} ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} -n ${NAMESPACE} --request-timeout=30s
+                                kubectl set image deployment/${service} ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} -n ${NAMESPACE} --request-timeout=60s
                                 
                                 # Scale down to 0, wait, then scale back up to desired replicas
                                 echo "Restarting ${service} deployment..."
-                                REPLICAS=\$(kubectl get deployment ${service} -n ${NAMESPACE} -o jsonpath='{.spec.replicas}' --request-timeout=20s 2>/dev/null || echo "1")
-                                kubectl scale deployment/${service} --replicas=0 -n ${NAMESPACE} --request-timeout=30s
+                                REPLICAS=\$(kubectl get deployment ${service} -n ${NAMESPACE} -o jsonpath='{.spec.replicas}' --request-timeout=30s 2>/dev/null || echo "1")
+                                kubectl scale deployment/${service} --replicas=0 -n ${NAMESPACE} --request-timeout=60s
                                 sleep 5
-                                kubectl scale deployment/${service} --replicas=\${REPLICAS} -n ${NAMESPACE} --request-timeout=30s
+                                kubectl scale deployment/${service} --replicas=\${REPLICAS} -n ${NAMESPACE} --request-timeout=60s
                                 
-                                # Wait for readiness with extended timeout
+                                # Wait for readiness with extended timeout and retries
                                 echo "Waiting for ${service} to be ready (this takes ~2 minutes due to health probes)..."
-                                if ! kubectl wait --for=condition=available --timeout=200s deployment/${service} -n ${NAMESPACE} 2>/dev/null; then
-                                    echo "⚠️ ${service} deployment timed out, checking status..."
-                                    kubectl get pods -l app=${service} -n ${NAMESPACE} --request-timeout=20s || true
-                                    kubectl describe pods -l app=${service} -n ${NAMESPACE} --request-timeout=20s | tail -30 || true
-                                    echo "❌ ${service} failed to deploy"
-                                    exit 1
-                                fi
-                                echo "✅ ${service} deployed successfully"
+                                RETRY_COUNT=0
+                                MAX_RETRIES=3
+                                
+                                while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
+                                    if kubectl wait --for=condition=available --timeout=200s deployment/${service} -n ${NAMESPACE} 2>/dev/null; then
+                                        echo "✅ ${service} deployed successfully"
+                                        break
+                                    else
+                                        RETRY_COUNT=\$((RETRY_COUNT + 1))
+                                        echo "⚠️ ${service} deployment attempt \$RETRY_COUNT/\$MAX_RETRIES timed out..."
+                                        
+                                        if [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; then
+                                            echo "Retrying in 10 seconds..."
+                                            sleep 10
+                                        else
+                                            echo "❌ ${service} failed to deploy after \$MAX_RETRIES attempts"
+                                            echo "Getting diagnostic information..."
+                                            kubectl get pods -l app=${service} -n ${NAMESPACE} --request-timeout=30s || true
+                                            kubectl describe pods -l app=${service} -n ${NAMESPACE} --request-timeout=30s | tail -50 || true
+                                            kubectl logs -l app=${service} -n ${NAMESPACE} --tail=50 --request-timeout=30s || true
+                                            exit 1
+                                        fi
+                                    fi
+                                done
                                 set -e
                                 
-                                # Small delay between services to avoid overwhelming cluster
-                                sleep 3
+                                # Longer delay between services to avoid overwhelming the cluster
+                                sleep 10
                             """
                         }
                         
@@ -635,9 +680,9 @@ pipeline {
                                 for ((i=1; i<=CONCURRENT; i++)); do
                                     {
                                         if curl -s -f -m 10 "${API_GATEWAY_URL}/actuator/health" > /dev/null 2>&1; then
-                                            echo "success" > /tmp/stress_test_$$_$i.txt
+                                            echo "success" > /tmp/stress_test_$_$i.txt
                                         else
-                                            echo "failed" > /tmp/stress_test_$$_$i.txt
+                                            echo "failed" > /tmp/stress_test_$_$i.txt
                                         fi
                                     } &
                                 done
@@ -647,14 +692,14 @@ pipeline {
                                 
                                 # Count results
                                 for ((i=1; i<=CONCURRENT; i++)); do
-                                    if [ -f /tmp/stress_test_$$_$i.txt ]; then
-                                        RESULT=$(cat /tmp/stress_test_$$_$i.txt)
+                                    if [ -f /tmp/stress_test_$_$i.txt ]; then
+                                        RESULT=$(cat /tmp/stress_test_$_$i.txt)
                                         if [ "$RESULT" = "success" ]; then
                                             SUCCESS=$((SUCCESS + 1))
                                         else
                                             FAILED=$((FAILED + 1))
                                         fi
-                                        rm /tmp/stress_test_$$_$i.txt
+                                        rm /tmp/stress_test_$_$i.txt
                                     fi
                                 done
                                 
@@ -695,9 +740,9 @@ pipeline {
                             for ((i=1; i<=50; i++)); do
                                 {
                                     if curl -s -f -m 10 "${API_GATEWAY_URL}/actuator/health" > /dev/null 2>&1; then
-                                        echo "success" > /tmp/spike_test_$$_$i.txt
+                                        echo "success" > /tmp/spike_test_$_$i.txt
                                     else
-                                        echo "failed" > /tmp/spike_test_$$_$i.txt
+                                        echo "failed" > /tmp/spike_test_$_$i.txt
                                     fi
                                 } &
                             done
@@ -707,14 +752,14 @@ pipeline {
                             
                             # Count results
                             for ((i=1; i<=50; i++)); do
-                                if [ -f /tmp/spike_test_$$_$i.txt ]; then
-                                    RESULT=$(cat /tmp/spike_test_$$_$i.txt)
+                                if [ -f /tmp/spike_test_$_$i.txt ]; then
+                                    RESULT=$(cat /tmp/spike_test_$_$i.txt)
                                     if [ "$RESULT" = "success" ]; then
                                         SPIKE_SUCCESS=$((SPIKE_SUCCESS + 1))
                                     else
                                         SPIKE_FAILED=$((SPIKE_FAILED + 1))
                                     fi
-                                    rm /tmp/spike_test_$$_$i.txt
+                                    rm /tmp/spike_test_$_$i.txt
                                 fi
                             done
                             
@@ -752,9 +797,9 @@ pipeline {
                                 for ((i=1; i<=10; i++)); do
                                     {
                                         if curl -s -f -m 10 "${API_GATEWAY_URL}/actuator/health" > /dev/null 2>&1; then
-                                            echo "success" > /tmp/sustained_test_$$_${ITERATION}_$i.txt
+                                            echo "success" > /tmp/sustained_test_$_${ITERATION}_$i.txt
                                         else
-                                            echo "failed" > /tmp/sustained_test_$$_${ITERATION}_$i.txt
+                                            echo "failed" > /tmp/sustained_test_$_${ITERATION}_$i.txt
                                         fi
                                     } &
                                 done
@@ -764,14 +809,14 @@ pipeline {
                                 
                                 # Count results for this iteration
                                 for ((i=1; i<=10; i++)); do
-                                    if [ -f /tmp/sustained_test_$$_${ITERATION}_$i.txt ]; then
-                                        RESULT=$(cat /tmp/sustained_test_$$_${ITERATION}_$i.txt)
+                                    if [ -f /tmp/sustained_test_$_${ITERATION}_$i.txt ]; then
+                                        RESULT=$(cat /tmp/sustained_test_$_${ITERATION}_$i.txt)
                                         if [ "$RESULT" = "success" ]; then
                                             SUSTAINED_SUCCESS=$((SUSTAINED_SUCCESS + 1))
                                         else
                                             SUSTAINED_FAILED=$((SUSTAINED_FAILED + 1))
                                         fi
-                                        rm /tmp/sustained_test_$$_${ITERATION}_$i.txt
+                                        rm /tmp/sustained_test_$_${ITERATION}_$i.txt
                                     fi
                                 done
                                 

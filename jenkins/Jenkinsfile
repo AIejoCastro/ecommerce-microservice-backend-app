@@ -214,49 +214,69 @@ pipeline {
                         
                         // Deploy cloud-config
                         sh """
-                            # Force delete any stuck pods first
-                            kubectl delete pods -l app=cloud-config -n ${NAMESPACE} --grace-period=0 --force 2>/dev/null || true
+                            set +e  # Don't fail on errors, handle them gracefully
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Deploying cloud-config..."
                             
-                            kubectl apply -f kubernetes/stage/cloud-config-deployment.yaml --validate=false
-                            kubectl set image deployment/cloud-config cloud-config=${DOCKER_REGISTRY}/cloud-config-ecommerce-boot:${VERSION} -n ${NAMESPACE}
+                            # Apply deployment manifest
+                            kubectl apply -f kubernetes/stage/cloud-config-deployment.yaml --validate=false --request-timeout=30s
                             
-                            # Wait with retries
-                            for i in 1 2 3; do
-                                if kubectl rollout status deployment/cloud-config -n ${NAMESPACE} --timeout=90s; then
-                                    echo "✅ Cloud-config deployed successfully"
-                                    break
-                                else
-                                    echo "Retry \$i: Deployment still pending, forcing pod restart..."
-                                    kubectl delete pods -l app=cloud-config -n ${NAMESPACE} --grace-period=0 --force 2>/dev/null || true
-                                    sleep 5
-                                fi
-                            done
+                            # Update image
+                            kubectl set image deployment/cloud-config cloud-config=${DOCKER_REGISTRY}/cloud-config-ecommerce-boot:${VERSION} -n ${NAMESPACE} --request-timeout=30s
+                            
+                            # Scale down to 0, wait, then scale back up (cleanest restart)
+                            echo "Restarting cloud-config deployment..."
+                            kubectl scale deployment/cloud-config --replicas=0 -n ${NAMESPACE} --request-timeout=30s
+                            sleep 5
+                            kubectl scale deployment/cloud-config --replicas=1 -n ${NAMESPACE} --request-timeout=30s
+                            
+                            # Wait for readiness with extended timeout for health probes (90s initial delay + buffer)
+                            echo "Waiting for cloud-config to be ready (this takes ~2 minutes due to health probes)..."
+                            if ! kubectl wait --for=condition=available --timeout=200s deployment/cloud-config -n ${NAMESPACE} 2>/dev/null; then
+                                echo "⚠️ Cloud-config deployment timed out, checking status..."
+                                kubectl get pods -l app=cloud-config -n ${NAMESPACE} --request-timeout=20s || true
+                                kubectl describe pods -l app=cloud-config -n ${NAMESPACE} --request-timeout=20s | tail -30 || true
+                                echo "❌ Cloud-config failed to deploy"
+                                exit 1
+                            fi
+                            echo "✅ cloud-config deployed successfully"
+                            set -e
                         """
                         
                         // Deploy service-discovery
                         sh """
-                            # Force delete any stuck pods first
-                            kubectl delete pods -l app=service-discovery -n ${NAMESPACE} --grace-period=0 --force 2>/dev/null || true
+                            set +e  # Don't fail on errors, handle them gracefully
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Deploying service-discovery..."
                             
-                            kubectl apply -f kubernetes/stage/service-discovery-deployment.yaml --validate=false
-                            kubectl set image deployment/service-discovery service-discovery=${DOCKER_REGISTRY}/service-discovery-ecommerce-boot:${VERSION} -n ${NAMESPACE}
+                            # Apply deployment manifest
+                            kubectl apply -f kubernetes/stage/service-discovery-deployment.yaml --validate=false --request-timeout=30s
                             
-                            # Wait with retries
-                            for i in 1 2 3; do
-                                if kubectl rollout status deployment/service-discovery -n ${NAMESPACE} --timeout=90s; then
-                                    echo "✅ Service-discovery deployed successfully"
-                                    break
-                                else
-                                    echo "Retry \$i: Deployment still pending, forcing pod restart..."
-                                    kubectl delete pods -l app=service-discovery -n ${NAMESPACE} --grace-period=0 --force 2>/dev/null || true
-                                    sleep 5
-                                fi
-                            done
+                            # Update image
+                            kubectl set image deployment/service-discovery service-discovery=${DOCKER_REGISTRY}/service-discovery-ecommerce-boot:${VERSION} -n ${NAMESPACE} --request-timeout=30s
+                            
+                            # Scale down to 0, wait, then scale back up
+                            echo "Restarting service-discovery deployment..."
+                            kubectl scale deployment/service-discovery --replicas=0 -n ${NAMESPACE} --request-timeout=30s
+                            sleep 5
+                            kubectl scale deployment/service-discovery --replicas=1 -n ${NAMESPACE} --request-timeout=30s
+                            
+                            # Wait for readiness
+                            echo "Waiting for service-discovery to be ready (this takes ~2 minutes due to health probes)..."
+                            if ! kubectl wait --for=condition=available --timeout=200s deployment/service-discovery -n ${NAMESPACE} 2>/dev/null; then
+                                echo "⚠️ Service-discovery deployment timed out, checking status..."
+                                kubectl get pods -l app=service-discovery -n ${NAMESPACE} --request-timeout=20s || true
+                                kubectl describe pods -l app=service-discovery -n ${NAMESPACE} --request-timeout=20s | tail -30 || true
+                                echo "❌ Service-discovery failed to deploy"
+                                exit 1
+                            fi
+                            echo "✅ service-discovery deployed successfully"
+                            set -e
                         """
                         
                         // Wait for infrastructure services to stabilize
                         echo "Waiting for infrastructure services to stabilize..."
-                        sh "sleep 10"
+                        sh "sleep 15"
                         
                         // Deploy application services
                         echo "Deploying application services..."
@@ -272,25 +292,37 @@ pipeline {
                         
                         appServices.each { service ->
                             sh """
+                                set +e  # Don't fail on errors, handle them gracefully
+                                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                                 echo "Deploying ${service}..."
                                 
-                                # Force delete any stuck pods
-                                kubectl delete pods -l app=${service} -n ${NAMESPACE} --grace-period=0 --force 2>/dev/null || true
+                                # Apply deployment manifest
+                                kubectl apply -f kubernetes/stage/${service}-deployment.yaml --validate=false --request-timeout=30s
                                 
-                                kubectl apply -f kubernetes/stage/${service}-deployment.yaml --validate=false
-                                kubectl set image deployment/${service} ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} -n ${NAMESPACE}
+                                # Update image
+                                kubectl set image deployment/${service} ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} -n ${NAMESPACE} --request-timeout=30s
                                 
-                                # Wait with retries
-                                for i in 1 2 3; do
-                                    if kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=90s; then
-                                        echo "✅ ${service} deployed successfully"
-                                        break
-                                    else
-                                        echo "Retry \\\$i: ${service} still pending, forcing pod restart..."
-                                        kubectl delete pods -l app=${service} -n ${NAMESPACE} --grace-period=0 --force 2>/dev/null || true
-                                        sleep 5
-                                    fi
-                                done
+                                # Scale down to 0, wait, then scale back up to desired replicas
+                                echo "Restarting ${service} deployment..."
+                                REPLICAS=\$(kubectl get deployment ${service} -n ${NAMESPACE} -o jsonpath='{.spec.replicas}' --request-timeout=20s 2>/dev/null || echo "1")
+                                kubectl scale deployment/${service} --replicas=0 -n ${NAMESPACE} --request-timeout=30s
+                                sleep 5
+                                kubectl scale deployment/${service} --replicas=\${REPLICAS} -n ${NAMESPACE} --request-timeout=30s
+                                
+                                # Wait for readiness with extended timeout
+                                echo "Waiting for ${service} to be ready (this takes ~2 minutes due to health probes)..."
+                                if ! kubectl wait --for=condition=available --timeout=200s deployment/${service} -n ${NAMESPACE} 2>/dev/null; then
+                                    echo "⚠️ ${service} deployment timed out, checking status..."
+                                    kubectl get pods -l app=${service} -n ${NAMESPACE} --request-timeout=20s || true
+                                    kubectl describe pods -l app=${service} -n ${NAMESPACE} --request-timeout=20s | tail -30 || true
+                                    echo "❌ ${service} failed to deploy"
+                                    exit 1
+                                fi
+                                echo "✅ ${service} deployed successfully"
+                                set -e
+                                
+                                # Small delay between services to avoid overwhelming cluster
+                                sleep 3
                             """
                         }
                         

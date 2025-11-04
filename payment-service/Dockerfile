@@ -1,5 +1,5 @@
 
-FROM eclipse-temurin:11-jre-alpine
+FROM eclipse-temurin:11-jre
 ARG PROJECT_VERSION=0.1.0
 ENV SPRING_PROFILES_ACTIVE=dev
 WORKDIR /home/app

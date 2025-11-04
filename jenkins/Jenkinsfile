@@ -821,8 +821,19 @@ pipeline {
 def buildService(serviceName) {
     echo "Building ${serviceName}..."
     dir(serviceName) {
-        sh 'chmod +x mvnw'
-        sh './mvnw clean package -DskipTests'
+        sh '''
+            chmod +x mvnw
+            # Fix corrupted Maven wrapper if needed
+            if ! ./mvnw --version 2>/dev/null; then
+                echo "Maven wrapper is corrupted, regenerating..."
+                rm -rf .mvn/wrapper/maven-wrapper.jar
+                # Use Maven wrapper from parent if available
+                if [ -f "../.mvn/wrapper/maven-wrapper.jar" ]; then
+                    cp -r ../.mvn .mvn
+                fi
+            fi
+            ./mvnw clean package -DskipTests
+        '''
     }
 }
 
@@ -832,6 +843,15 @@ def runUnitTests(serviceName) {
     dir(serviceName) {
         sh '''
             chmod +x mvnw
+            # Fix corrupted Maven wrapper if needed
+            if ! ./mvnw --version 2>/dev/null; then
+                echo "Maven wrapper is corrupted, regenerating..."
+                rm -rf .mvn/wrapper/maven-wrapper.jar
+                # Use Maven wrapper from parent if available
+                if [ -f "../.mvn/wrapper/maven-wrapper.jar" ]; then
+                    cp -r ../.mvn .mvn
+                fi
+            fi
             # Exclude E2E tests and Integration tests that require external services
             # Patterns: *E2E*, *IntegrationTest, *IT (but not *ImplTest)
             ./mvnw test -Dtest='!*E2E*,!*IntegrationTest,!*IT' -DfailIfNoTests=false -Dspring.main.allow-bean-definition-overriding=true || {

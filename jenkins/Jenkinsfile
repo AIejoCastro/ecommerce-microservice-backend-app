@@ -200,10 +200,10 @@ pipeline {
                         sh 'kubectl config current-context'
 
                         // Crear namespace si no existe
-                        sh "kubectl create namespace ${NAMESPACE} --request-timeout=60s 2>/dev/null || echo 'Namespace already exists'"
+                        sh "kubectl create namespace ${NAMESPACE} 2>/dev/null || true"
                         
                         // Aplicar ConfigMaps
-                        sh "kubectl apply --validate=false -f kubernetes/stage/configmap.yaml --request-timeout=60s"
+                        sh "kubectl apply -f kubernetes/stage/configmap.yaml --server-side=true --force-conflicts"
 
                         // Deploy infrastructure services first
                         echo "Deploying infrastructure services..."

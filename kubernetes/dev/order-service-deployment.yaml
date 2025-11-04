@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: order-service
-          image: selimhorri/order-service-ecommerce-boot:dev-latest
+          image: alejocastro/order-service-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8300
@@ -26,16 +26,18 @@ spec:
                 name: microservices-config
           readinessProbe:
             httpGet:
-              path: /actuator/health
+              path: /order-service/actuator/health
               port: 8300
-            initialDelaySeconds: 15
-            periodSeconds: 15
+            initialDelaySeconds: 150
+            periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /actuator/health
+              path: /order-service/actuator/health
               port: 8300
-            initialDelaySeconds: 30
+            initialDelaySeconds: 180
             periodSeconds: 30
+            failureThreshold: 3
           resources:
             requests:
               cpu: 150m

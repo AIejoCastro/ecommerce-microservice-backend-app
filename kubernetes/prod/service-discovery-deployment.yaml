@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: service-discovery
-          image: selimhorri/service-discovery-ecommerce-boot:latest
+          image: alejocastro/service-discovery-ecommerce-boot:prod-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8761

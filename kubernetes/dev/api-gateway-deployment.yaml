@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: selimhorri/api-gateway-ecommerce-boot:dev-latest
+          image: alejocastro/api-gateway-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -28,14 +28,16 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 15
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 8080
-            initialDelaySeconds: 30
+            initialDelaySeconds: 120
             periodSeconds: 30
+            failureThreshold: 3
           resources:
             requests:
               cpu: 150m

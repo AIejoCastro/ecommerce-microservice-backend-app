@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: product-service
-          image: selimhorri/product-service-ecommerce-boot:stage-latest
+          image: alejocastro/product-service-ecommerce-boot:stage-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8500

@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: product-service
-          image: selimhorri/product-service-ecommerce-boot:dev-latest
+          image: alejocastro/product-service-ecommerce-boot:dev-latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8500
@@ -26,16 +26,18 @@ spec:
                 name: microservices-config
           readinessProbe:
             httpGet:
-              path: /actuator/health
+              path: /product-service/actuator/health
               port: 8500
-            initialDelaySeconds: 15
-            periodSeconds: 15
+            initialDelaySeconds: 150
+            periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /actuator/health
+              path: /product-service/actuator/health
               port: 8500
-            initialDelaySeconds: 30
+            initialDelaySeconds: 180
             periodSeconds: 30
+            failureThreshold: 3
           resources:
             requests:
               cpu: 100m

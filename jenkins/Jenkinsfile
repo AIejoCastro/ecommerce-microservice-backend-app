@@ -199,20 +199,11 @@ pipeline {
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh 'kubectl config current-context'
 
-                        // Crear namespace si no existe
-                        sh "kubectl create namespace ${NAMESPACE} 2>/dev/null || true"
-                        
-                        // Aplicar ConfigMaps con retry
+                        // Crear namespace y recursos con kubectl create/delete
                         sh """
-                            for i in 1 2 3 4 5; do
-                                echo "Attempt \$i: Applying ConfigMaps..."
-                                if kubectl replace -f kubernetes/stage/configmap.yaml --force 2>/dev/null || kubectl create -f kubernetes/stage/configmap.yaml 2>/dev/null; then
-                                    echo "ConfigMaps applied successfully"
-                                    break
-                                fi
-                                echo "Failed, waiting 10 seconds..."
-                                sleep 10
-                            done
+                            kubectl create namespace ${NAMESPACE} 2>/dev/null || true
+                            kubectl delete configmap microservices-config -n ${NAMESPACE} --ignore-not-found=true
+                            kubectl create -f kubernetes/stage/configmap.yaml
                         """
 
                         // Deploy infrastructure services first
@@ -220,12 +211,11 @@ pipeline {
                         def infraServices = env.INFRA_SERVICES.split(',')
                         infraServices.each { service ->
                             sh """
-                                kubectl set image deployment/${service} \
-                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
-                                    -n ${NAMESPACE} || \
-                                kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml
-                                
-                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=6m
+                                kubectl delete deployment ${service} -n ${NAMESPACE} --ignore-not-found=true
+                                kubectl delete service ${service} -n ${NAMESPACE} --ignore-not-found=true
+                                sleep 3
+                                kubectl create -f kubernetes/stage/${service}-deployment.yaml
+                                sleep 10
                             """
                         }
                         
@@ -238,12 +228,11 @@ pipeline {
                         def appServices = env.APP_SERVICES.split(',')
                         appServices.each { service ->
                             sh """
-                                kubectl set image deployment/${service} \
-                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
-                                    -n ${NAMESPACE} || \
-                                kubectl apply --validate=false -f kubernetes/stage/${service}-deployment.yaml
-                                
-                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=8m
+                                kubectl delete deployment ${service} -n ${NAMESPACE} --ignore-not-found=true
+                                kubectl delete service ${service} -n ${NAMESPACE} --ignore-not-found=true
+                                sleep 3
+                                kubectl create -f kubernetes/stage/${service}-deployment.yaml
+                                sleep 10
                             """
                         }
                     }

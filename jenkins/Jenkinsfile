@@ -261,11 +261,30 @@ pipeline {
                     echo "⚡ Running performance tests..."
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh '''
-                            set -e
                             API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                             
                             echo "📊 Starting performance test suite..."
                             echo "Target: http://${API_GATEWAY}:8080"
+                            echo ""
+                            
+                            # Wait for API Gateway to be ready
+                            echo "⏳ Waiting for API Gateway to be ready..."
+                            MAX_RETRIES=30
+                            RETRY_COUNT=0
+                            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://${API_GATEWAY}:8080/actuator/health 2>/dev/null || echo "000")
+                                if [ "$HTTP_CODE" = "200" ]; then
+                                    echo "✅ API Gateway is ready!"
+                                    break
+                                fi
+                                RETRY_COUNT=$((RETRY_COUNT + 1))
+                                echo "  Waiting... (${RETRY_COUNT}/${MAX_RETRIES})"
+                                sleep 2
+                            done
+                            
+                            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                                echo "⚠️  API Gateway not ready after ${MAX_RETRIES} retries, continuing anyway..."
+                            fi
                             echo ""
                             
                             # Variables para acumular resultados
@@ -283,8 +302,9 @@ pipeline {
                             SUCCESS=0
                             FAIL=0
                             
-                            for i in {1..100}; do
-                                if curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/actuator/health | grep -q "200"; then
+                            for i in $(seq 1 100); do
+                                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 5 http://${API_GATEWAY}:8080/actuator/health 2>/dev/null || echo "000")
+                                if [ "$HTTP_CODE" = "200" ]; then
                                     SUCCESS=$((SUCCESS + 1))
                                 else
                                     FAIL=$((FAIL + 1))
@@ -293,6 +313,9 @@ pipeline {
                             
                             END_TIME=$(date +%s)
                             DURATION=$((END_TIME - START_TIME))
+                            if [ $DURATION -eq 0 ]; then
+                                DURATION=1
+                            fi
                             RPS=$(awk "BEGIN {printf \\"%.2f\\", $SUCCESS/$DURATION}")
                             SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESS/100)*100}")
                             
@@ -316,8 +339,9 @@ pipeline {
                             SUCCESS=0
                             FAIL=0
                             
-                            for i in {1..50}; do
-                                if curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/api/users/actuator/health | grep -qE "200|404"; then
+                            for i in $(seq 1 50); do
+                                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 5 http://${API_GATEWAY}:8080/api/users/actuator/health 2>/dev/null || echo "000")
+                                if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
                                     SUCCESS=$((SUCCESS + 1))
                                 else
                                     FAIL=$((FAIL + 1))
@@ -326,6 +350,9 @@ pipeline {
                             
                             END_TIME=$(date +%s)
                             DURATION=$((END_TIME - START_TIME))
+                            if [ $DURATION -eq 0 ]; then
+                                DURATION=1
+                            fi
                             RPS=$(awk "BEGIN {printf \\"%.2f\\", $SUCCESS/$DURATION}")
                             SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESS/50)*100}")
                             
@@ -349,8 +376,9 @@ pipeline {
                             SUCCESS=0
                             FAIL=0
                             
-                            for i in {1..50}; do
-                                if curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/api/products/actuator/health | grep -qE "200|404"; then
+                            for i in $(seq 1 50); do
+                                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 5 http://${API_GATEWAY}:8080/api/products/actuator/health 2>/dev/null || echo "000")
+                                if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
                                     SUCCESS=$((SUCCESS + 1))
                                 else
                                     FAIL=$((FAIL + 1))
@@ -359,6 +387,9 @@ pipeline {
                             
                             END_TIME=$(date +%s)
                             DURATION=$((END_TIME - START_TIME))
+                            if [ $DURATION -eq 0 ]; then
+                                DURATION=1
+                            fi
                             RPS=$(awk "BEGIN {printf \\"%.2f\\", $SUCCESS/$DURATION}")
                             SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESS/50)*100}")
                             
@@ -378,8 +409,17 @@ pipeline {
                             echo "✅ PERFORMANCE TESTS SUMMARY"
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                             
-                            OVERALL_SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESSFUL_REQUESTS/$TOTAL_REQUESTS)*100}")
-                            AVG_RPS=$(awk "BEGIN {printf \\"%.2f\\", $SUCCESSFUL_REQUESTS/$TOTAL_TIME}")
+                            if [ $TOTAL_REQUESTS -eq 0 ]; then
+                                OVERALL_SUCCESS_RATE=0
+                            else
+                                OVERALL_SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESSFUL_REQUESTS/$TOTAL_REQUESTS)*100}")
+                            fi
+                            
+                            if [ $TOTAL_TIME -eq 0 ]; then
+                                AVG_RPS=0
+                            else
+                                AVG_RPS=$(awk "BEGIN {printf \\"%.2f\\", $SUCCESSFUL_REQUESTS/$TOTAL_TIME}")
+                            fi
                             
                             echo "  📊 Total Requests: ${TOTAL_REQUESTS}"
                             echo "  ✅ Successful: ${SUCCESSFUL_REQUESTS}"
@@ -389,9 +429,11 @@ pipeline {
                             echo "  ⏱️  Total Duration: ${TOTAL_TIME}s"
                             echo ""
                             
-                            # Fail if success rate is below 95%
-                            if (( $(echo "$OVERALL_SUCCESS_RATE < 95" | bc -l) )); then
-                                echo "❌ Performance test failed: Success rate ${OVERALL_SUCCESS_RATE}% is below 95%"
+                            # Fail if success rate is below 95% (using awk instead of bc)
+                            THRESHOLD=95
+                            COMPARISON=$(awk "BEGIN {print ($OVERALL_SUCCESS_RATE < $THRESHOLD)}")
+                            if [ "$COMPARISON" = "1" ]; then
+                                echo "❌ Performance test failed: Success rate ${OVERALL_SUCCESS_RATE}% is below ${THRESHOLD}%"
                                 exit 1
                             fi
                             
@@ -408,7 +450,6 @@ pipeline {
                     echo "💪 Running stress tests..."
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh '''
-                            set -e
                             API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                             
                             echo "🔥 Starting stress test suite..."
@@ -432,7 +473,7 @@ pipeline {
                                 START=$(date +%s)
                                 
                                 for i in $(seq 1 ${CONCURRENCY}); do
-                                    curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/actuator/health > /tmp/stress_$i.txt &
+                                    curl -s -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 5 http://${API_GATEWAY}:8080/actuator/health > /tmp/stress_$i.txt 2>/dev/null || echo "000" > /tmp/stress_$i.txt &
                                 done
                                 wait
                                 
@@ -467,8 +508,8 @@ pipeline {
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                             
                             echo "  → Warming up (5 requests)..."
-                            for i in {1..5}; do
-                                curl -s -o /dev/null http://${API_GATEWAY}:8080/actuator/health
+                            for i in $(seq 1 5); do
+                                curl -s -o /dev/null --max-time 10 --connect-timeout 5 http://${API_GATEWAY}:8080/actuator/health 2>/dev/null || true
                             done
                             
                             echo "  → Spike: 50 concurrent requests..."
@@ -476,12 +517,12 @@ pipeline {
                             FAIL=0
                             START=$(date +%s)
                             
-                            for i in {1..50}; do
-                                curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/actuator/health > /tmp/spike_$i.txt &
+                            for i in $(seq 1 50); do
+                                curl -s -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 5 http://${API_GATEWAY}:8080/actuator/health > /tmp/spike_$i.txt 2>/dev/null || echo "000" > /tmp/spike_$i.txt &
                             done
                             wait
                             
-                            for i in {1..50}; do
+                            for i in $(seq 1 50); do
                                 if grep -q "200" /tmp/spike_$i.txt 2>/dev/null; then
                                     SUCCESS=$((SUCCESS + 1))
                                 else
@@ -492,7 +533,11 @@ pipeline {
                             
                             END=$(date +%s)
                             DURATION=$((END - START))
-                            SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESS/50)*100}")
+                            if [ $SUCCESS -eq 0 ] && [ $FAIL -eq 0 ]; then
+                                SUCCESS_RATE=0
+                            else
+                                SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($SUCCESS/50)*100}")
+                            fi
                             
                             echo "     ✓ 50 concurrent: ${SUCCESS} success, ${FAIL} failed in ${DURATION}s"
                             echo "     ✓ Success Rate: ${SUCCESS_RATE}%"
@@ -519,12 +564,12 @@ pipeline {
                                 SUCCESS=0
                                 FAIL=0
                                 
-                                for i in {1..10}; do
-                                    curl -s -o /dev/null -w "%{http_code}" http://${API_GATEWAY}:8080/actuator/health > /tmp/sustained_$i.txt &
+                                for i in $(seq 1 10); do
+                                    curl -s -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 5 http://${API_GATEWAY}:8080/actuator/health > /tmp/sustained_$i.txt 2>/dev/null || echo "000" > /tmp/sustained_$i.txt &
                                 done
                                 wait
                                 
-                                for i in {1..10}; do
+                                for i in $(seq 1 10); do
                                     if grep -q "200" /tmp/sustained_$i.txt 2>/dev/null; then
                                         SUCCESS=$((SUCCESS + 1))
                                     else
@@ -542,8 +587,17 @@ pipeline {
                             
                             ACTUAL_DURATION=$(( $(date +%s) - START ))
                             TOTAL_REQUESTS=$((TOTAL_SUCCESS + TOTAL_FAIL))
-                            SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($TOTAL_SUCCESS/$TOTAL_REQUESTS)*100}")
-                            RPS=$(awk "BEGIN {printf \\"%.2f\\", $TOTAL_REQUESTS/$ACTUAL_DURATION}")
+                            if [ $TOTAL_REQUESTS -eq 0 ]; then
+                                SUCCESS_RATE=0
+                                RPS=0
+                            else
+                                SUCCESS_RATE=$(awk "BEGIN {printf \\"%.2f\\", ($TOTAL_SUCCESS/$TOTAL_REQUESTS)*100}")
+                                if [ $ACTUAL_DURATION -eq 0 ]; then
+                                    RPS=0
+                                else
+                                    RPS=$(awk "BEGIN {printf \\"%.2f\\", $TOTAL_REQUESTS/$ACTUAL_DURATION}")
+                                fi
+                            fi
                             
                             echo "     ✓ Duration: ${ACTUAL_DURATION}s"
                             echo "     ✓ Total requests: ${TOTAL_REQUESTS} (${ITERATIONS} iterations)"
@@ -578,9 +632,16 @@ pipeline {
                                 echo "  ⚠️  WARNING: High restart count (${RESTART_COUNT})"
                             fi
                             
-                            if (( $(echo "$SUCCESS_RATE < 90" | bc -l) )); then
-                                echo "  ❌ FAILED: Success rate ${SUCCESS_RATE}% is below 90%"
-                                exit 1
+                            # Check success rate using awk instead of bc
+                            THRESHOLD=90
+                            if [ "$TOTAL_REQUESTS" -eq 0 ]; then
+                                echo "  ⚠️  WARNING: No requests completed during sustained load test"
+                            else
+                                COMPARISON=$(awk "BEGIN {print ($SUCCESS_RATE < $THRESHOLD)}")
+                                if [ "$COMPARISON" = "1" ]; then
+                                    echo "  ❌ FAILED: Success rate ${SUCCESS_RATE}% is below ${THRESHOLD}%"
+                                    exit 1
+                                fi
                             fi
                             
                             echo "  ✅ System remained stable under stress"

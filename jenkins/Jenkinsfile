@@ -259,6 +259,7 @@ pipeline {
             steps {
                 script {
                     echo "⚡ Running performance tests..."
+                    echo "� Performance tests are MANDATORY in STAGE environment"
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh '''
                             API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
@@ -448,6 +449,7 @@ pipeline {
             steps {
                 script {
                     echo "💪 Running stress tests..."
+                    echo "� Stress tests are MANDATORY in STAGE environment"
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh '''
                             API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')

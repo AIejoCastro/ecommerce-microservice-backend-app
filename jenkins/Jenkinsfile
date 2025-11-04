@@ -202,8 +202,18 @@ pipeline {
                         // Crear namespace si no existe
                         sh "kubectl create namespace ${NAMESPACE} 2>/dev/null || true"
                         
-                        // Aplicar ConfigMaps
-                        sh "kubectl apply -f kubernetes/stage/configmap.yaml --server-side=true --force-conflicts"
+                        // Aplicar ConfigMaps con retry
+                        sh """
+                            for i in 1 2 3 4 5; do
+                                echo "Attempt \$i: Applying ConfigMaps..."
+                                if kubectl replace -f kubernetes/stage/configmap.yaml --force 2>/dev/null || kubectl create -f kubernetes/stage/configmap.yaml 2>/dev/null; then
+                                    echo "ConfigMaps applied successfully"
+                                    break
+                                fi
+                                echo "Failed, waiting 10 seconds..."
+                                sleep 10
+                            done
+                        """
 
                         // Deploy infrastructure services first
                         echo "Deploying infrastructure services..."

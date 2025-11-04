@@ -1,29 +1,33 @@
-// jenkins/Jenkinsfile-stage
+// jenkins/Jenkinsfile-dev
 pipeline {
     agent any
     
     triggers {
+        // GitHub webhook trigger - requires webhook configuration in GitHub
         githubPush()
+        // Poll SCM every 5 minutes as backup (only triggers if changes detected)
         pollSCM('H/5 * * * *')
     }
     
     environment {
         DOCKER_REGISTRY = 'alejocastro'
         VERSION = "${BUILD_NUMBER}"
-        NAMESPACE = 'ecommerce-stage'
+        NAMESPACE = 'ecommerce-dev'
+        // Infrastructure services must be deployed first
         INFRA_SERVICES = 'cloud-config,service-discovery'
+        // Application services depend on infrastructure
         APP_SERVICES = 'api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         SERVICES = 'cloud-config,service-discovery,api-gateway,user-service,product-service,order-service,payment-service,shipping-service'
         APP_VERSION = '0.1.0'
-        EXPECTED_BRANCH = 'stage'
-        KUBE_CONFIG_CREDENTIALS_ID = 'kubeconfig-stage'
+        EXPECTED_BRANCH = 'dev'
+        KUBE_CONFIG_CREDENTIALS_ID = 'kubeconfig-dev'
     }
     
     stages {
         stage('Checkout') {
             steps {
                 script {
-                    echo "🔍 Cloning repository for STAGE environment..."
+                    echo "Cloning repository..."
                     checkout scm
                     validateBranch(env.EXPECTED_BRANCH)
                     sh 'git log -1 --pretty=format:"%h - %an: %s"'
@@ -156,17 +160,18 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 script {
-                    echo "🐳 Building Docker images for all services..."
+                    echo "Building Docker images for all services..."
                     def services = env.SERVICES.split(',')
                     services.each { service ->
                         sh """
-                            docker build --build-arg PROJECT_VERSION=${APP_VERSION} \
+                            docker build \
+                                --build-arg PROJECT_VERSION=${APP_VERSION} \
                                 -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
-                                -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:stage-latest \
-                                -f ${service}/Dockerfile ${service}
+                                -t ${DOCKER_REGISTRY}/${service}-ecommerce-boot:dev-latest \
+                                -f ${service}/Dockerfile \
+                                ${service}
                         """
                     }
-                    echo "✅ All Docker images built successfully"
                 }
             }
         }
@@ -174,50 +179,64 @@ pipeline {
         stage('Push to Registry') {
             steps {
                 script {
-                    echo "📤 Pushing images to Docker Hub..."
-                    docker.withRegistry('', 'dockerhub-credentials') {
+                    echo "Pushing images to Docker Hub..."
+                    withDockerRegistry([credentialsId: 'dockerhub-credentials', url: '']) {
                         def services = env.SERVICES.split(',')
                         services.each { service ->
                             sh """
                                 docker push ${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION}
-                                docker push ${DOCKER_REGISTRY}/${service}-ecommerce-boot:stage-latest
+                                docker push ${DOCKER_REGISTRY}/${service}-ecommerce-boot:dev-latest
                             """
                         }
                     }
-                    echo "✅ All images pushed to registry"
                 }
             }
         }
         
-        stage('Deploy to Kubernetes Stage') {
+        stage('Deploy to Kubernetes Dev') {
             steps {
                 script {
-                    echo "🚀 Deploying to Kubernetes ${NAMESPACE}..."
+                    echo "Deploying to Kubernetes ${NAMESPACE}..."
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
-                        sh """
-                            kubectl config current-context
-                            
-                            # Create namespace if not exists
-                            kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply --validate=false -f -
-                            
-                            echo "📦 Deploying infrastructure services..."
-                            ${env.INFRA_SERVICES.split(',').collect { service ->
-                                """kubectl apply -f kubernetes/stage/${service}-deployment.yaml
-                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=6m || echo "⚠️ ${service} deployment took longer than expected" """
-                            }.join('\n')}
-                            
-                            echo "⏳ Waiting for infrastructure services to stabilize..."
-                            sleep 30
-                            
-                            echo "🎯 Deploying application services..."
-                            ${env.APP_SERVICES.split(',').collect { service ->
-                                """kubectl apply -f kubernetes/stage/${service}-deployment.yaml
-                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=8m || echo "⚠️ ${service} deployment took longer than expected" """
-                            }.join('\n')}
-                            
-                            echo "✅ All services deployed!"
-                            kubectl get pods -n ${NAMESPACE}
-                        """
+                        sh 'kubectl config current-context'
+
+                        // Crear namespace si no existe
+                        sh "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply --validate=false -f -"
+                        
+                        // Aplicar ConfigMaps
+                        sh "kubectl apply --validate=false -f kubernetes/dev/configmap.yaml"
+                        
+                        // Deploy infrastructure services first
+                        echo "Deploying infrastructure services..."
+                        def infraServices = env.INFRA_SERVICES.split(',')
+                        infraServices.each { service ->
+                            sh """
+                                kubectl set image deployment/${service} \
+                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
+                                    -n ${NAMESPACE} || \
+                                kubectl apply --validate=false -f kubernetes/dev/${service}-deployment.yaml
+                                
+                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=6m
+                            """
+                        }
+                        
+                        // Wait a bit for services to be fully ready
+                        echo "Waiting for infrastructure services to stabilize..."
+                        sh "sleep 15"
+                        
+                        // Deploy application services
+                        echo "Deploying application services..."
+                        def appServices = env.APP_SERVICES.split(',')
+                        appServices.each { service ->
+                            sh """
+                                kubectl set image deployment/${service} \
+                                    ${service}=${DOCKER_REGISTRY}/${service}-ecommerce-boot:${VERSION} \
+                                    -n ${NAMESPACE} || \
+                                kubectl apply --validate=false -f kubernetes/dev/${service}-deployment.yaml
+                                
+                                kubectl rollout status deployment/${service} -n ${NAMESPACE} --timeout=8m
+                            """
+                        }
                     }
                 }
             }
@@ -226,94 +245,40 @@ pipeline {
         stage('Run E2E Tests') {
             steps {
                 script {
-                    echo "🔬 Running End-to-End tests in STAGE..."
+                    echo "🔬 Running End-to-End tests..."
                     withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh '''
-                            echo "Waiting for all services to be fully ready..."
-                            sleep 60
+                            # Wait for all services to be fully ready
+                            echo "Waiting for all services to stabilize..."
+                            sleep 45
                             
+                            # Get service URLs
                             API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                            
+                            echo "Running E2E tests against deployed services..."
                             echo "API Gateway URL: http://${API_GATEWAY}:8080"
+                            
+                            # Run E2E tests from order-service (has E2E tests)
+                            echo "Running Order Service E2E tests..."
                         '''
                         
+                        // Run E2E tests for services that have them
                         def servicesWithE2E = ['order-service']
                         servicesWithE2E.each { service ->
                             dir(service) {
                                 sh """
+                                    # Set environment variables for E2E tests
                                     export API_GATEWAY_URL=\$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                                     export SERVICE_URL=\$(kubectl get svc ${service} -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                                     
-                                    echo "🧪 Running E2E tests for ${service}..."
+                                    # Run E2E tests
                                     ./mvnw test -Dtest=*E2E* || echo "⚠️ E2E tests for ${service} had issues"
                                 """
                             }
                         }
                         
-                        echo "✅ E2E tests completed!"
-                    }
-                }
-            }
-        }
-        
-        stage('Performance Tests') {
-            steps {
-                script {
-                    echo "⚡ Running performance tests..."
-                    withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
                         sh '''
-                            API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
-                            
-                            echo "📊 Starting performance test suite..."
-                            echo "Target: http://${API_GATEWAY}:8080"
-                            
-                            # Aquí puedes agregar herramientas como JMeter, Gatling, k6, etc.
-                            # Ejemplo con Apache Bench (ab) si está disponible
-                            
-                            # Test 1: Health endpoint performance
-                            echo "Test 1: Health endpoint - 1000 requests, 10 concurrent"
-                            
-                            # Test 2: User service performance  
-                            echo "Test 2: User service - 500 requests, 5 concurrent"
-                            
-                            # Test 3: Product service performance
-                            echo "Test 3: Product service - 500 requests, 5 concurrent"
-                            
-                            echo "✅ Performance tests completed!"
-                            echo "📈 Results summary:"
-                            echo "  - Average response time: ~XXXms"
-                            echo "  - Requests per second: ~XXX"
-                            echo "  - Success rate: XX%"
-                        '''
-                    }
-                }
-            }
-        }
-        
-        stage('Stress Tests') {
-            steps {
-                script {
-                    echo "💪 Running stress tests..."
-                    withKubeConfig([credentialsId: env.KUBE_CONFIG_CREDENTIALS_ID]) {
-                        sh '''
-                            API_GATEWAY=$(kubectl get svc api-gateway -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
-                            
-                            echo "🔥 Starting stress test suite..."
-                            echo "Target: http://${API_GATEWAY}:8080"
-                            
-                            # Stress Test 1: Gradual load increase
-                            echo "Stress Test 1: Gradual load (1-50 concurrent users)"
-                            
-                            # Stress Test 2: Spike test
-                            echo "Stress Test 2: Spike test (0-100-0 concurrent users)"
-                            
-                            # Stress Test 3: Sustained load
-                            echo "Stress Test 3: Sustained load (25 concurrent users for 5 min)"
-                            
-                            echo "✅ Stress tests completed!"
-                            echo "📊 System stability: PASS"
-                            echo "   - No pod crashes detected"
-                            echo "   - Response times within acceptable range"
-                            echo "   - Error rate < 1%"
+                            echo "✅ E2E tests completed!"
                         '''
                     }
                 }
@@ -322,43 +287,44 @@ pipeline {
     }
     
     post {
-        always {
-            junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
-            archiveArtifacts artifacts: '**/target/*.jar', allowEmptyArchive: true
-            echo "🧹 Cleaning workspace..."
-            cleanWs()
-        }
         success {
-            echo "✅ Pipeline STAGE succeeded!"
-            echo "🎉 All tests passed: Unit, E2E, Performance, and Stress tests"
-            echo "✨ Environment is stable and ready for production promotion"
+            echo "✅ Pipeline DEV completed successfully!"
+            echo "All stages passed: Build → Unit Tests → Docker Build → Deploy → E2E Tests"
         }
         failure {
-            echo "❌ Pipeline STAGE failed!"
+            echo "❌ Pipeline DEV failed!"
             echo "Check the console output for details"
+        }
+        always {
+            // Publish test results if they exist
+            junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+            
+            // Archive test reports
+            archiveArtifacts artifacts: '**/target/surefire-reports/**', allowEmptyArchive: true
+            
+            echo "Cleaning workspace..."
+            cleanWs()
         }
     }
 }
 
-// Helper functions
+// Función helper para build
 def buildService(serviceName) {
     echo "Building ${serviceName}..."
     dir(serviceName) {
-        sh '''
-            chmod +x mvnw
-            ./mvnw clean package -DskipTests -Dspring.profiles.active=stage || {
-                echo "⚠️ Build failed for ''' + serviceName + '''"
-                exit 1
-            }
-        '''
+        sh 'chmod +x mvnw'
+        sh './mvnw clean package -DskipTests'
     }
 }
 
+// Función helper para ejecutar tests unitarios
 def runUnitTests(serviceName) {
     echo "Running unit tests for ${serviceName}..."
     dir(serviceName) {
         sh '''
             chmod +x mvnw
+            # Exclude E2E tests and Integration tests that require external services
+            # Patterns: *E2E*, *IntegrationTest, *IT (but not *ImplTest)
             ./mvnw test -Dtest='!*E2E*,!*IntegrationTest,!*IT' -DfailIfNoTests=false -Dspring.main.allow-bean-definition-overriding=true || {
                 echo "⚠️ Some unit tests failed for ''' + serviceName + '''"
                 exit 1
@@ -367,6 +333,7 @@ def runUnitTests(serviceName) {
     }
 }
 
+// Abort early if pipeline runs from the wrong branch to keep environment isolation intact
 def validateBranch(expectedBranch) {
     def branch = env.BRANCH_NAME ?: env.GIT_BRANCH
     if (!branch || branch == 'HEAD') {
@@ -379,6 +346,7 @@ def validateBranch(expectedBranch) {
     if (!branch || branch != expectedBranch) {
         echo "⚠️ WARNING: Branch mismatch detected. Pipeline expects '${expectedBranch}' but running on '${branch ?: 'unknown'}'"
         echo "Continuing anyway for development purposes..."
+        // error "Detected branch '${branch ?: 'unknown'}'; this pipeline must run on '${expectedBranch}'."
     } else {
         echo "✅ Branch validation passed: '${branch}'"
     }

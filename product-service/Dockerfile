@@ -1,4 +1,4 @@
-FROM openjdk:11
+FROM eclipse-temurin:11-jdk
 ARG SPRING_PROFILES_ACTIVE=dev
 ENV SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
 RUN mkdir -p /home/app

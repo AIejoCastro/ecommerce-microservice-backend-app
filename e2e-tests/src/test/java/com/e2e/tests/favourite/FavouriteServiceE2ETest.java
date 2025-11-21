@@ -1,0 +1,32 @@
+package com.e2e.tests.favourite;
+
+import com.e2e.tests.util.E2ESuite;
+import com.e2e.tests.util.TestRestFacade;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.ResponseEntity;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@SpringBootTest(classes = E2ESuite.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
+public class FavouriteServiceE2ETest extends E2ESuite {
+    @Autowired
+    private TestRestFacade restFacade;
+
+    @Value("${favourite.service.url}")
+    private String favouriteServiceUrl;
+
+
+    @Test
+    void shouldGetAllFavourites() {
+        ResponseEntity<String> response = restFacade.get(
+                favouriteServiceUrl + "/favourite-service/api/favourites",
+                String.class);
+        System.out.println("Response: " + response.getBody());
+        System.out.println("Status Code: " + response.getStatusCode());
+        assertTrue(response.getStatusCode().is2xxSuccessful(), "Unexpected status code: " + response.getStatusCode());
+    }
+
+}

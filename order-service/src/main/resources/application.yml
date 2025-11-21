@@ -27,14 +27,31 @@ resilience4j:
         sliding-window-size: 10
         wait-duration-in-open-state: 5s
         sliding-window-type: COUNT_BASED
-
+  ratelimiter:
+    instances:
+      productServiceRateLimiter:
+        limit-for-period: 2
+        limit-refresh-period: 120s
+        timeout-duration: 30s
+        register-health-indicator: true
+        
 management:
+  web:
+    exposure:
+      include: '*'
+    base-path: /actuator
   health:
     circuitbreakers:
+      enabled: true
+    livenessstate:
+      enabled: true
+    readinessstate:
       enabled: true
   endpoint:
     health:
       show-details: always
+      probes:
+        enabled: true
 
 
 

@@ -579,7 +579,7 @@ pipeline {
                             to: '$DEFAULT_RECIPIENTS',
                             subject: "Action Required: Approval Needed for Deploy of Build #${env.BUILD_NUMBER}",
                             body: """\
-                        Hello dead man (daniel) and Goat Ossa,
+                        Hello Alejandro,
                         The build #${env.BUILD_NUMBER} for branch *${env.BRANCH_NAME}* has completed and is pending approval for deployment.
                         Please review the changes and approve or abort
                         You can access the build details here:
@@ -592,41 +592,41 @@ pipeline {
             }
         }
 
-        stage('Configure kubeconfig') {
-            when { branch 'master' }
-            steps {
-                withAWS(credentials: 'aws-cred', region: "${AWS_REGION}") {
-                    sh '''
-                export KUBECONFIG=$WORKSPACE/kubeconfig
-                    aws eks update-kubeconfig \\
-                        --name ecommerce-prod \\
-                        --region us-east-1 \\
-                        --role-arn arn:aws:iam::058264169618:role/gh-ecommerce-ingesoft \\
-                        --kubeconfig $PWD/kubeconfig
-                kubectl --kubeconfig $KUBECONFIG get nodes
-                kubectl get pods -A
-            '''
-                }
-            }
-        }
+        // stage('Configure kubeconfig') {
+        //     when { branch 'master' }
+        //     steps {
+        //         withAWS(credentials: 'aws-cred', region: "${AWS_REGION}") {
+        //             sh '''
+        //         export KUBECONFIG=$WORKSPACE/kubeconfig
+        //             aws eks update-kubeconfig \\
+        //                 --name ecommerce-prod \\
+        //                 --region us-east-1 \\
+        //                 --role-arn arn:aws:iam::058264169618:role/gh-ecommerce-ingesoft \\
+        //                 --kubeconfig $PWD/kubeconfig
+        //         kubectl --kubeconfig $KUBECONFIG get nodes
+        //         kubectl get pods -A
+        //     '''
+        //         }
+        //     }
+        // }
 
-        stage('Create Namespace') {
-            when { branch 'master' }
-            steps {
-                withAWS(credentials: 'aws-cred', region: 'us-east-1') {
-                    sh '''
-                export KUBECONFIG=$WORKSPACE/kubeconfig
-                aws eks update-kubeconfig \
-                    --name ecommerce-prod \
-                    --region us-east-1 \
-                    --role-arn arn:aws:iam::058264169618:role/gh-ecommerce-ingesoft \
-                    --kubeconfig $KUBECONFIG
+        // stage('Create Namespace') {
+        //     when { branch 'master' }
+        //     steps {
+        //         withAWS(credentials: 'aws-cred', region: 'us-east-1') {
+        //             sh '''
+        //         export KUBECONFIG=$WORKSPACE/kubeconfig
+        //         aws eks update-kubeconfig \
+        //             --name ecommerce-prod \
+        //             --region us-east-1 \
+        //             --role-arn arn:aws:iam::058264169618:role/gh-ecommerce-ingesoft \
+        //             --kubeconfig $KUBECONFIG
 
-                kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
-            '''
-                }
-            }
-        }
+        //         kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
+        //     '''
+        //         }
+        //     }
+        // }
 
 
 
@@ -755,7 +755,7 @@ pipeline {
                     writeFile file: 'RELEASE_NOTES.md', text: releaseNotes
                     archiveArtifacts artifacts: 'RELEASE_NOTES.md', fingerprint: true
 
-                    withCredentials([usernamePassword(credentialsId: 'gh-acces', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                    withCredentials([usernamePassword(credentialsId: 'github-access', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
                         sh """
                     git add RELEASE_NOTES.md
                     git commit -m "chore(release): v${env.NEW_VERSION}" || true

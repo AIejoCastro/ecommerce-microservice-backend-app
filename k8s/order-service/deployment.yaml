@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: order-service
-        image: jacoboossag/order-service:dev
+        image: alejocastro/order-service:dev
         ports:
         - containerPort: 8300
         # resources:

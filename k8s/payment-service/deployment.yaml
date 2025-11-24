@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: payment-service
-          image: jacoboossag/payment-service:dev
+          image: alejocastro/payment-service:dev
           ports:
             - containerPort: 8400
           # resources:

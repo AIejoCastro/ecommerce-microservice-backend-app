@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: jacoboossag/user-service:dev
+          image: alejocastro/user-service:dev
           # imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8700

@@ -16,6 +16,8 @@ pipeline {
         CLUSTER_NAME = 'ecommerce-prod'
     }
 
+
+
     stages {
         stage('Scanning Branch') {
             steps {

@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: cloud-config
-          image: jacoboossag/cloud-config:dev
+          image: alejocastro/cloud-config:dev
           ports:
             - containerPort: 9296
           command: ["java"]

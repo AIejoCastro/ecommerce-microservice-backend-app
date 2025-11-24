@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: favourite-service
-        image: jacoboossag/favourite-service:dev
+        image: alejocastro/favourite-service:dev
         ports:
         - containerPort: 8800
         # resources:

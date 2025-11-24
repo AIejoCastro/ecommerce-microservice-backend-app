@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: service-discovery
-        image: jacoboossag/service-discovery:dev
+        image: alejocastro/service-discovery:dev
         ports:
         - containerPort: 8761
 #        resources:

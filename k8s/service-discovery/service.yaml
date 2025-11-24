@@ -3,15 +3,10 @@ kind: Service
 metadata:
   name: service-discovery
   namespace: microservices
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "alb"
-    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-    service.beta.kubernetes.io/aws-load-balancer-target-type: "ip"
 spec:
+  type: ClusterIP  # ← Cambiar aquí
   selector:
     app: service-discovery
   ports:
-    - name: http
-      port: 80        # Exponlo como 80 para que ALB haga HTTP
+    - port: 8761
       targetPort: 8761
-  type: LoadBalancer

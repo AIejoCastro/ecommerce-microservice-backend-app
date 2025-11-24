@@ -668,6 +668,19 @@ pipeline {
             }
         }
 
+        stage('Deploy Ingress') {
+            when { branch 'master' }
+            steps {
+                withAWS(credentials: 'aws-cred', region: 'us-east-1') {
+                    sh '''
+                export KUBECONFIG=$WORKSPACE/kubeconfig
+
+                kubectl apply -f k8s/ingress.yaml -n ${K8S_NAMESPACE}
+                kubectl get ingress -n ${K8S_NAMESPACE}
+            '''
+                }
+            }
+        }
 
         stage('Deploy Microservices') {
             when { branch 'master' }

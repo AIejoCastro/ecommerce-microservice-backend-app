@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: service-discovery
+  namespace: microservices
   labels:
     app: service-discovery
 spec:
@@ -31,8 +32,6 @@ spec:
           value: "dev"
         - name: SPRING_ZIPKIN_BASE_URL
           value: "http://zipkin-service:9411"
-        - name: EUREKA_INSTANCE_HOSTNAME
-          value: k8s-microser-serviced-7f07cdb598-7d1ec5b8130797f9.elb.us-east-1.amazonaws.com
 
 
         livenessProbe:

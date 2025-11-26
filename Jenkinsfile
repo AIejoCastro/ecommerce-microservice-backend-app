@@ -142,7 +142,7 @@ pipeline {
                    nexusArtifactUploader(
                            nexusVersion: 'nexus3',
                            protocol: 'http',
-                           nexusUrl: 'k8s-artifact-sonatype-d27d7dd556-14942105.us-east-1.elb.amazonaws.com',
+                           nexusUrl: 'k8s-artifact-sonatype-d27d7dd556-1059737199.us-east-1.elb.amazonaws.com',
                            groupId: 'com.ecommerce',
                            version: version,
                            repository: 'ecommerce-app',

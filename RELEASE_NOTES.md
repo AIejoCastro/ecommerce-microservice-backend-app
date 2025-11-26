@@ -2,6 +2,8 @@
 ## Changes since v1.1.0
 
 ### Chores / Misc
+- 3dca5eb Update Nexus URL in Jenkinsfile and change security group in ingress.yaml for Nexus Sonatype. (AIejoCastro)
+- b1de42a chore(release): v1.1.0 (AIejoCastro)
 - 9e61439 Update Nexus URL in Jenkinsfile and modify security group in ingress configuration for Nexus Sonatype. (AIejoCastro)
 - 064fa82 Update application.yml to set context-path to root for improved service discovery configuration. (AIejoCastro)
 - 9156172 Update application.yml to remove context-path value for Eureka client configuration. (AIejoCastro)

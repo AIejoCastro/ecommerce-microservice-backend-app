@@ -1,23 +1,24 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: microservices-ingress
+  name: zipkin-ingress
   namespace: microservices
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
     alb.ingress.kubernetes.io/group.name: microservices-alb
-    alb.ingress.kubernetes.io/group.order: '3'
+    alb.ingress.kubernetes.io/group.order: '2'
 spec:
   ingressClassName: alb
   rules:
     - http:
         paths:
-          - path: /
+          - path: /zipkin
             pathType: Prefix
             backend:
               service:
-                name: api-gateway
+                name: zipkin-service
                 port:
-                  number: 8080
+                  number: 9411
+

@@ -685,8 +685,41 @@ pipeline {
                     sh '''
                 export KUBECONFIG=$WORKSPACE/kubeconfig
 
+                # Deploy ingresses (they will share the same ALB using group.name annotation)
+                kubectl apply -f k8s/service-discovery/ingress.yaml
+                kubectl apply -f k8s/zipkin/ingress.yaml
                 kubectl apply -f k8s/ingress.yaml -n ${K8S_NAMESPACE}
                 kubectl get ingress -n ${K8S_NAMESPACE}
+                
+                echo "Waiting for ALB to be provisioned..."
+                sleep 30
+                
+                # Get the ALB URL
+                ALB_URL=$(kubectl get ingress microservices-ingress -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+                if [ -n "$ALB_URL" ]; then
+                    echo "ALB URL: http://${ALB_URL}"
+                    echo "Eureka: http://${ALB_URL}/eureka"
+                    echo "Zipkin: http://${ALB_URL}/zipkin"
+                    echo "API Gateway: http://${ALB_URL}/"
+                else
+                    echo "ALB is still being provisioned. Check status with: kubectl get ingress -n ${K8S_NAMESPACE}"
+                fi
+                
+                # Deploy monitoring ingresses (Grafana and Prometheus)
+                if kubectl get namespace monitoring &>/dev/null; then
+                    kubectl apply -f k8s/monitoring/ingress.yaml
+                    echo "Monitoring ingress deployed"
+                else
+                    echo "Monitoring namespace not found, skipping monitoring ingress"
+                fi
+                
+                # Deploy logging ingress (Kibana)
+                if kubectl get namespace logging &>/dev/null; then
+                    kubectl apply -f k8s/logging/ingress.yaml
+                    echo "Logging ingress deployed"
+                else
+                    echo "Logging namespace not found, skipping logging ingress"
+                fi
             '''
                 }
             }

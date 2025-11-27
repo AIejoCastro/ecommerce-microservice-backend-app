@@ -2,6 +2,9 @@
 ## Changes since v1.1.0
 
 ### Chores / Misc
+- fcba518 Enhance Jenkinsfile to deploy additional ingresses for service discovery, monitoring, and logging, while updating ingress.yaml to group microservices under a shared ALB. Include checks for namespace existence before deploying monitoring and logging ingresses. (AIejoCastro)
+- 9067bea Update binary files: .DS_Store and image 18.png with new versions. (AIejoCastro)
+- 7207510 chore(release): v1.1.0 (AIejoCastro)
 - f6f13a0 Remove deprecated ingress configuration for api-gateway from ingress.yaml, streamlining the deployment setup. (AIejoCastro)
 - f227376 Enhance Jenkinsfile to include JSON report generation for ZAP scans alongside HTML reports, ensuring both formats are available for service security assessments. (AIejoCastro)
 - 4d4eebf Update Jenkinsfile to deploy api-gateway and add new services to appServices list. Change namespace for common-config, api-gateway, and shipping-service configurations to 'microservices'. Modify ingress configuration to include api-gateway service. Update security group for Nexus Sonatype ingress. (AIejoCastro)

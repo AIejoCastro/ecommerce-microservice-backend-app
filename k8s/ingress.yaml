@@ -7,13 +7,25 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
-    alb.ingress.kubernetes.io/group.name: microservices-alb
-    alb.ingress.kubernetes.io/group.order: '3'
 spec:
   ingressClassName: alb
   rules:
     - http:
         paths:
+          - path: /eureka
+            pathType: Prefix
+            backend:
+              service:
+                name: service-discovery
+                port:
+                  number: 8761
+          - path: /zipkin
+            pathType: Prefix
+            backend:
+              service:
+                name: zipkin-service
+                port:
+                  number: 9411
           - path: /
             pathType: Prefix
             backend:

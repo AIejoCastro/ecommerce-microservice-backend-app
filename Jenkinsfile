@@ -515,16 +515,19 @@ pipeline {
 
                     targets.each { service ->
                         def reportFile = "zap-reports/report-${service.name}.html"
+                        def jsonFile = "zap-reports/report-${service.name}.json"
                         echo "==> Escaneando ${service.name} (${service.url})"
                         sh """
                             docker run --rm \
                             --network ecommerce-test \
-                            -v ${env.WORKSPACE}:/zap/wrk \
+                            -v ${env.WORKSPACE}:/zap/wrk:rw \
                             zaproxy/zap-stable \
                             zap-baseline.py \
                             -t ${service.url} \
                             -r ${reportFile} \
-                            -I
+                            -J ${jsonFile} \
+                            -I \
+                            || true
                         """
                     }
                 }

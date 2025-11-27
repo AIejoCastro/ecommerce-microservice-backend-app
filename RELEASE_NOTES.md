@@ -2,6 +2,11 @@
 ## Changes since v1.1.0
 
 ### Chores / Misc
+- f6f13a0 Remove deprecated ingress configuration for api-gateway from ingress.yaml, streamlining the deployment setup. (AIejoCastro)
+- f227376 Enhance Jenkinsfile to include JSON report generation for ZAP scans alongside HTML reports, ensuring both formats are available for service security assessments. (AIejoCastro)
+- 4d4eebf Update Jenkinsfile to deploy api-gateway and add new services to appServices list. Change namespace for common-config, api-gateway, and shipping-service configurations to 'microservices'. Modify ingress configuration to include api-gateway service. Update security group for Nexus Sonatype ingress. (AIejoCastro)
+- 97554fc Documentation (AIejoCastro)
+- d27e9d5 chore(release): v1.1.0 (AIejoCastro)
 - 3dca5eb Update Nexus URL in Jenkinsfile and change security group in ingress.yaml for Nexus Sonatype. (AIejoCastro)
 - b1de42a chore(release): v1.1.0 (AIejoCastro)
 - 9e61439 Update Nexus URL in Jenkinsfile and modify security group in ingress configuration for Nexus Sonatype. (AIejoCastro)

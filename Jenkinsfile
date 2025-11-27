@@ -142,7 +142,7 @@ pipeline {
                    nexusArtifactUploader(
                            nexusVersion: 'nexus3',
                            protocol: 'http',
-                           nexusUrl: 'k8s-artifact-sonatype-d27d7dd556-1059737199.us-east-1.elb.amazonaws.com',
+                           nexusUrl: 'k8s-artifact-sonatype-d27d7dd556-1853647582.us-east-1.elb.amazonaws.com',
                            groupId: 'com.ecommerce',
                            version: version,
                            repository: 'ecommerce-app',
@@ -665,6 +665,11 @@ pipeline {
                 kubectl set image deployment/cloud-config cloud-config=${DOCKERHUB_USER}/cloud-config:dev -n ${K8S_NAMESPACE}
                 kubectl set env deployment/cloud-config SPRING_PROFILES_ACTIVE=dev -n ${K8S_NAMESPACE}
                 kubectl rollout status deployment/cloud-config -n ${K8S_NAMESPACE} --timeout=300s
+
+                kubectl apply -f k8s/api-gateway/ -n ${K8S_NAMESPACE}
+                kubectl set image deployment/api-gateway api-gateway=${DOCKERHUB_USER}/api-gateway:dev -n ${K8S_NAMESPACE}
+                kubectl set env deployment/api-gateway SPRING_PROFILES_ACTIVE=dev -n ${K8S_NAMESPACE}
+                kubectl rollout status deployment/api-gateway -n ${K8S_NAMESPACE} --timeout=200s
             '''
                 }
             }
@@ -700,7 +705,12 @@ pipeline {
                 '''
 
                         def appServices = [
-                                'order-service','product-service','user-service'
+                                'order-service',
+                                'product-service',
+                                'user-service',
+                                'payment-service',
+                                'favourite-service',
+                                'shipping-service'
                         ]
 
                         for (svc in appServices) {

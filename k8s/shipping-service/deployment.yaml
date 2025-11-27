@@ -46,7 +46,7 @@ spec:
             - name: SERVER_PORT
               value: "8600"
             - name: SERVER_SERVLET_CONTEXT_PATH
-          #     value: "/shipping-service"
+              value: "/shipping-service"
           #   - name: SPRING_CONFIG_ADDITIONAL_LOCATION
           #     value: "file:/etc/config/common-services.properties,file:/etc/config/shipping-service.properties"
           # volumeMounts:
@@ -54,14 +54,14 @@ spec:
           #     mountPath: /etc/config
           livenessProbe:
             httpGet:
-              path: /actuator/health
+              path: /shipping-service/actuator/health
               port: 8600
             initialDelaySeconds: 60 
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /actuator/health
+              path: /shipping-service/actuator/health
               port: 8600
             initialDelaySeconds: 30
             periodSeconds: 10

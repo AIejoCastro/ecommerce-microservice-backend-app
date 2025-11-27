@@ -26,3 +26,10 @@ spec:
                 name: zipkin-service
                 port:
                   number: 9411
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080

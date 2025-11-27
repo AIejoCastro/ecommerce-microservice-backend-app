@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: common-config
-  #namespace: ecommerce-app
+  namespace: microservices
 data:
   # Configuración común para todos los microservicios
   common-services.properties: |

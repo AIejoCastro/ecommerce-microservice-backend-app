@@ -2,6 +2,8 @@
 ## Changes since v1.1.0
 
 ### Chores / Misc
+- cb2a59a Refactor Jenkinsfile to remove deprecated ingress deployments for service discovery, monitoring, and logging. Update ingress.yaml to define paths for Eureka and Zipkin services under a single ALB, streamlining the ingress configuration. (AIejoCastro)
+- 6bc4231 chore(release): v1.1.0 (AIejoCastro)
 - fcba518 Enhance Jenkinsfile to deploy additional ingresses for service discovery, monitoring, and logging, while updating ingress.yaml to group microservices under a shared ALB. Include checks for namespace existence before deploying monitoring and logging ingresses. (AIejoCastro)
 - 9067bea Update binary files: .DS_Store and image 18.png with new versions. (AIejoCastro)
 - 7207510 chore(release): v1.1.0 (AIejoCastro)

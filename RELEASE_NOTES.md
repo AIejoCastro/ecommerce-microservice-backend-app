@@ -1,7 +1,10 @@
-# Release v1.1.0
+# Release v1.1.1
 ## Changes since v1.1.0
 
 ### Chores / Misc
+- 592b45a fix: Correct Nexus URL formatting in Jenkinsfile for artifact upload stage. (AIejoCastro)
+- 258acf9 fix: Remove Docker image push stage from Jenkinsfile, update Nexus URL in artifact upload stage, delete obsolete AWS Cloud Architecture image, and modify security group in ingress.yaml for Nexus Sonatype. (AIejoCastro)
+- 4ebe8ce chore(release): v1.1.0 (AIejoCastro)
 - cb2a59a Refactor Jenkinsfile to remove deprecated ingress deployments for service discovery, monitoring, and logging. Update ingress.yaml to define paths for Eureka and Zipkin services under a single ALB, streamlining the ingress configuration. (AIejoCastro)
 - 6bc4231 chore(release): v1.1.0 (AIejoCastro)
 - fcba518 Enhance Jenkinsfile to deploy additional ingresses for service discovery, monitoring, and logging, while updating ingress.yaml to group microservices under a shared ALB. Include checks for namespace existence before deploying monitoring and logging ingresses. (AIejoCastro)

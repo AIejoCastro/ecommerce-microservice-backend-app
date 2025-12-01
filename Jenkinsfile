@@ -91,26 +91,6 @@ pipeline {
            }
        }
 
-       stage('Push Docker Images to Docker Hub') {
-           when {
-               anyOf {
-                   branch 'dev'
-                   branch 'stage'
-                   branch 'master'
-               }
-           }
-           steps {
-               withCredentials([string(credentialsId: "${DOCKER_CREDENTIALS_ID}", variable: 'docker_pwd')]) {
-                   sh "docker login -u ${DOCKERHUB_USER} -p ${docker_pwd}"
-                   script {
-                       SERVICES.split().each { service ->
-                           sh "docker push ${DOCKERHUB_USER}/${service}:${IMAGE_TAG}"
-                       }
-                   }
-               }
-           }
-       }
-
        stage('Upload Artifacts') {
            when { branch 'master' }
            steps {
@@ -142,7 +122,7 @@ pipeline {
                    nexusArtifactUploader(
                            nexusVersion: 'nexus3',
                            protocol: 'http',
-                           nexusUrl: 'k8s-artifact-sonatype-d27d7dd556-1853647582.us-east-1.elb.amazonaws.com',
+                           nexusUrl: 'k8s-artifact-sonatype-d27d7dd556-809375698.us-east-1.elb.amazonaws.com ',
                            groupId: 'com.ecommerce',
                            version: version,
                            repository: 'ecommerce-app',
